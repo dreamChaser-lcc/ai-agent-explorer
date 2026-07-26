@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: research-agent-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/research_agent}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  execution:
+    default-mode: ${APP_EXECUTION_MODE:ASYNC}
+    async-thread-pool-size: ${APP_ASYNC_POOL_SIZE:4}
+    pause-at-step-boundary-only: ${APP_PAUSE_AT_STEP_BOUNDARY_ONLY:true}
+  llm:
+    provider: ${APP_LLM_PROVIDER:openai}
+    chat-model: ${APP_LLM_CHAT_MODEL:gpt-4o-mini}
+    temperature: ${APP_LLM_TEMPERATURE:0.2}
+    max-steps: ${APP_LLM_MAX_STEPS:12}
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAI_API_KEY:}
+      model-name: ${OPENAI_MODEL_NAME:gpt-4o-mini}
+      log-requests: ${OPENAI_LOG_REQUESTS:false}
+      log-responses: ${OPENAI_LOG_RESPONSES:false}
