@@ -3,7 +3,7 @@ package com.aiexplorer.researchagent.application.service;
 import com.aiexplorer.researchagent.api.response.StepExecutionResponse;
 import com.aiexplorer.researchagent.api.response.TaskEventResponse;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.StepExecutionRepository;
-import com.aiexplorer.researchagent.infrastructure.persistence.repository.TaskEventLogRepository;
+import com.aiexplorer.researchagent.infrastructure.persistence.store.TaskEventLogStore;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -16,15 +16,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskActivityQueryService {
 
     private final StepExecutionRepository stepExecutionRepository;
-    private final TaskEventLogRepository taskEventLogRepository;
+    private final TaskEventLogStore taskEventLogStore;
     private final TaskResponseMapper taskResponseMapper;
 
     public TaskActivityQueryService(
             StepExecutionRepository stepExecutionRepository,
-            TaskEventLogRepository taskEventLogRepository,
+            TaskEventLogStore taskEventLogStore,
             TaskResponseMapper taskResponseMapper) {
         this.stepExecutionRepository = stepExecutionRepository;
-        this.taskEventLogRepository = taskEventLogRepository;
+        this.taskEventLogStore = taskEventLogStore;
         this.taskResponseMapper = taskResponseMapper;
     }
 
@@ -43,7 +43,7 @@ public class TaskActivityQueryService {
      */
     @Transactional(readOnly = true)
     public List<TaskEventResponse> listTaskEvents(UUID taskId) {
-        return taskEventLogRepository.findByTaskIdOrderByCreatedAtDesc(taskId).stream()
+        return taskEventLogStore.findByTaskIdOrderByCreatedAtDesc(taskId).stream()
                 .map(taskResponseMapper::toTaskEvent)
                 .toList();
     }

@@ -1,7 +1,7 @@
 package com.aiexplorer.researchagent.application.service;
 
 import com.aiexplorer.researchagent.infrastructure.persistence.entity.TaskEventLogEntity;
-import com.aiexplorer.researchagent.infrastructure.persistence.repository.TaskEventLogRepository;
+import com.aiexplorer.researchagent.infrastructure.persistence.store.TaskEventLogStore;
 import com.aiexplorer.researchagent.shared.enums.EventType;
 import com.aiexplorer.researchagent.shared.enums.OperatorType;
 import java.time.OffsetDateTime;
@@ -16,13 +16,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class TaskEventService {
 
-    private final TaskEventLogRepository taskEventLogRepository;
+    private final TaskEventLogStore taskEventLogStore;
     private final TaskProgressStreamService taskProgressStreamService;
 
     public TaskEventService(
-            TaskEventLogRepository taskEventLogRepository,
+            TaskEventLogStore taskEventLogStore,
             TaskProgressStreamService taskProgressStreamService) {
-        this.taskEventLogRepository = taskEventLogRepository;
+        this.taskEventLogStore = taskEventLogStore;
         this.taskProgressStreamService = taskProgressStreamService;
     }
 
@@ -58,7 +58,7 @@ public class TaskEventService {
         event.setOperatorType(operatorType);
         event.setOperatorId(operatorId);
         event.setCreatedAt(OffsetDateTime.now());
-        taskEventLogRepository.save(event);
+        taskEventLogStore.save(event);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("taskId", taskId);

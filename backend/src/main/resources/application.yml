@@ -25,7 +25,23 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    # 打印 JPA(Hibernate) 生成的 SQL 与参数，便于与 MyBatis 对照
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
+    # 打印 MyBatis 执行的 SQL
+    com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis: debug
+
 app:
+  persistence:
+    # 持久化实现开关：jpa（默认）/ mybatis，可用环境变量 APP_PERSISTENCE_MODE 覆盖
+    mode: ${APP_PERSISTENCE_MODE:jpa}
   execution:
     default-mode: ${APP_EXECUTION_MODE:ASYNC}
     async-thread-pool-size: ${APP_ASYNC_POOL_SIZE:4}

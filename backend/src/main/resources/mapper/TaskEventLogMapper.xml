@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- MyBatis SQL 映射文件：与 TaskEventLogMapper 接口一一对应 -->
+<mapper namespace="com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.TaskEventLogMapper">
+
+    <!-- 新增：手写 INSERT，主键由 Service 层手动生成；JSON 列用自定义 TypeHandler 写入 -->
+    <insert id="insert" parameterType="com.aiexplorer.researchagent.infrastructure.persistence.entity.TaskEventLogEntity">
+        INSERT INTO task_event_log (id, task_id, step_id, event_type, event_message, event_payload, operator_type, operator_id, created_at)
+        VALUES (#{id},
+                #{taskId},
+                #{stepId},
+                #{eventType},
+                #{eventMessage},
+                CAST(#{eventPayload, typeHandler=com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.JsonNodeTypeHandler} AS JSON),
+                #{operatorType},
+                #{operatorId},
+                #{createdAt})
+    </insert>
+
+    <!-- 按主键查询：与 JPA 的 findById().orElse(null) 等价 -->
+    <select id="findById" parameterType="java.util.UUID"
+            resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.TaskEventLogEntity">
+        SELECT id, task_id, step_id, event_type, event_message, event_payload, operator_type, operator_id, created_at
+        FROM task_event_log
+        WHERE id = #{id}
+    </select>
+
+    <!-- 按任务查询事件日志（时间倒序）：与 JPA 的 findByTaskIdOrderByCreatedAtDesc 等价 -->
+    <select id="findByTaskIdOrderByCreatedAtDesc" parameterType="java.util.UUID"
+            resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.TaskEventLogEntity">
+        SELECT id, task_id, step_id, event_type, event_message, event_payload, operator_type, operator_id, created_at
+        FROM task_event_log
+        WHERE task_id = #{taskId}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>
