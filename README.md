@@ -1,6 +1,6 @@
 # AI Agent Explorer
 
-这是一个面向学习与工程实践的 AI Research Agent 全栈项目，目标是用一套尽量接近真实生产的结构，把“研究任务型智能体”从前端到后端完整跑通。
+这是一个面向学习与工程实践的 AI Research Agent 全栈项目，目标是用一套尽量接近真实生产的结构，把"研究任务型智能体"从前端到后端完整跑通。
 
 当前版本已经完成了一个可运行的 MVP，核心能力包括：
 
@@ -22,43 +22,18 @@
 ### 后端
 
 - Spring Boot 3.5
-- Java 21
+- Java 21+
 - Maven 3.9
-- Spring Web
-- Spring Validation
-- Spring Data JPA
-- Flyway
-- LangChain4j
-- Redis Starter（当前主要保留扩展能力）
+- Spring Web / Validation / Data JPA
+- MyBatis（与 JPA 共存，可切换）
+- Flyway（数据库迁移）
+- LangChain4j（LLM 集成）
+- Redis Starter（缓存，可选）
 
 ### 数据存储
 
 - PostgreSQL：正式运行配置默认使用
-- H2：本地 `dev` 配置使用，便于快速启动和演示
-
-## 本次会话已完成内容
-
-- 初始化并完成 Research Agent MVP 的前后端骨架
-- 实现研究任务状态机、任务控制与步骤编排
-- 完成研究计划、步骤、执行记录、来源资料、报告、事件日志、人工确认等核心持久化模型
-- 实现任务接口、报告接口、SSE 进度接口
-- 完成前端任务创建页、任务详情页、报告页
-- 完成控制器测试、编排测试、持久化测试
-- 补充本地 `dev` 配置，后端可直接用 H2 运行
-- 清理并补充后端中文注释与说明文档
-
-## 已安装 / 已验证环境
-
-本次会话中已安装或显式验证的环境如下：
-
-- Temurin OpenJDK 21
-- Apache Maven 3.9.16
-- Node.js / npm：已可正常执行前端构建与开发命令
-
-说明：
-
-- PostgreSQL 当前未在本机安装或未启用，所以默认生产配置无法直接启动
-- 为了先跑通项目，已新增 `dev` 本地配置，使用 H2 内存数据库代替 PostgreSQL
+- H2：本地 `dev` 配置使用，文件存储模式，数据持久化到 `backend/data/h2db/`
 
 ## 启动方式
 
@@ -69,6 +44,15 @@
 ### 后端
 
 本地开发推荐直接使用 H2 的 `dev` 配置：
+
+**方式一：使用启动脚本（推荐）**
+
+```powershell
+cd D:\Project\ai-agent-explorer\backend
+.\start-dev.ps1
+```
+
+**方式二：手动执行命令**
 
 ```powershell
 cd D:\Project\ai-agent-explorer\backend
@@ -94,39 +78,46 @@ npm run dev
 ## 项目结构
 
 ```text
-backend/
-  src/main/java/com/aiexplorer/researchagent/
-    api/                # 控制器、请求对象、响应对象
-    application/service # 应用服务、任务编排、事件推送
-    infrastructure/     # 配置、持久化、工具适配
-    shared/             # 枚举、异常、共享定义
-  src/main/resources/
-    application.yml
-    application-dev.yml
-    db/migration/
-    schema-dev.sql
+backend/                          # 后端 Spring Boot 项目
+├── pom.xml                       # Maven 配置 & 依赖声明
+├── start-dev.ps1                 # Windows 启动脚本
+├── .env.example                  # 环境变量模板
+├── README.md                     # 后端详细文档
+├── src/main/java/                # Java 源码
+│   └── com/aiexplorer/researchagent/
+│       ├── api/                  # API 层：控制器、请求/响应 DTO
+│       ├── application/          # 应用层：业务服务、任务编排
+│       ├── domain/               # 领域层（预留）
+│       ├── shared/               # 共享层：枚举、异常
+│       └── infrastructure/       # 基础设施层：配置、持久化、工具
+├── src/main/resources/           # 配置文件
+│   ├── application.yml           # 默认配置（PostgreSQL）
+│   ├── application-dev.yml       # dev 环境配置（H2）
+│   ├── schema-dev.sql            # H2 建表脚本
+│   ├── db/migration/             # Flyway 迁移脚本
+│   └── mapper/                   # MyBatis XML 映射
+└── src/test/                     # 测试代码
 
-frontend/
-  app/                  # Next.js 页面
-  lib/api.ts            # 前端调用后端 API 与 SSE 封装
+frontend/                         # 前端 Next.js 项目
+├── app/                          # 页面路由
+└── lib/api.ts                    # API 调用封装
 
 openspec/
-  changes/research-agent-mvp/
+└── changes/research-agent-mvp/   # MVP 变更记录
 ```
 
 ## 建议阅读顺序
 
 如果你想尽快读懂后端运行流程，建议按这个顺序看：
 
-1. `backend/src/main/java/com/aiexplorer/researchagent/ResearchAgentApplication.java`
-2. `backend/src/main/java/com/aiexplorer/researchagent/api/controller/ResearchTaskController.java`
-3. `backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskCommandService.java`
-4. `backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchPlanningService.java`
-5. `backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskControlService.java`
-6. `backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskOrchestrator.java`
-7. `backend/src/main/java/com/aiexplorer/researchagent/application/service/TaskEventService.java`
-8. `backend/src/main/java/com/aiexplorer/researchagent/application/service/TaskProgressStreamService.java`
-9. `backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportAssemblyService.java`
+1. `ResearchAgentApplication.java` — 启动入口
+2. `ResearchTaskController.java` — REST 接口定义
+3. `ResearchTaskCommandService.java` — 任务创建
+4. `ResearchPlanningService.java` — 计划生成
+5. `ResearchTaskControlService.java` — 人工确认/暂停/恢复
+6. `ResearchTaskOrchestrator.java` — 核心执行引擎
+7. `TaskEventService.java` — 事件记录
+8. `TaskProgressStreamService.java` — SSE 实时推送
 
 ## 补充文档
 
@@ -134,3 +125,4 @@ openspec/
 - `docs/会话总结-2026-07-26.md`
 - `docs/后端运行链路教程.md`
 - `docs/数据库表视角教程.md`
+- `backend/README.md` — 后端项目完整文档

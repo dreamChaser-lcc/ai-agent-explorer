@@ -1,4 +1,4 @@
-CREATE TABLE research_task (
+CREATE TABLE IF NOT EXISTS research_task (
     id UUID PRIMARY KEY,
     task_no VARCHAR(64) NOT NULL UNIQUE,
     title VARCHAR(255) NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE research_task (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE research_plan (
+CREATE TABLE IF NOT EXISTS research_plan (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     version INTEGER NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE research_plan (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE research_step (
+CREATE TABLE IF NOT EXISTS research_step (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     plan_id UUID NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE research_step (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE step_execution (
+CREATE TABLE IF NOT EXISTS step_execution (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     step_id UUID NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE step_execution (
     duration_ms BIGINT NULL
 );
 
-CREATE TABLE source_document (
+CREATE TABLE IF NOT EXISTS source_document (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     step_id UUID NULL,
@@ -86,7 +86,7 @@ CREATE TABLE source_document (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE research_report (
+CREATE TABLE IF NOT EXISTS research_report (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL UNIQUE,
     version INTEGER NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE research_report (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE task_event_log (
+CREATE TABLE IF NOT EXISTS task_event_log (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     step_id UUID NULL,
@@ -113,7 +113,7 @@ CREATE TABLE task_event_log (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
-CREATE TABLE human_confirmation (
+CREATE TABLE IF NOT EXISTS human_confirmation (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     step_id UUID NULL,

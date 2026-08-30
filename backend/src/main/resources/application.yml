@@ -24,6 +24,7 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  shutdown: graceful
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
@@ -32,6 +33,7 @@ mybatis:
 
 logging:
   level:
+    root: INFO
     # 打印 JPA(Hibernate) 生成的 SQL 与参数，便于与 MyBatis 对照
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace
