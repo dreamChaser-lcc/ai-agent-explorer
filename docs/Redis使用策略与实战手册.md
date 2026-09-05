@@ -4,14 +4,24 @@
 
 ---
 
-## 一、项目现状
+## ⚠️ 现状提示（2026-09 更新）
 
-| 项 | 状态 | 位置 |
+本文中标注"已实现"的缓存代码（`RedisCacheConfig.java`、`pom.xml` 的 redis 依赖、
+`ResearchTaskQueryService` 的 `@Cacheable`）在提交
+`d163142 chore: 优化本地开发配置，完善文档，移除Redis缓存` 中已被**整体移除**。
+当前代码库仅 `application.yml` 保留 `spring.data.redis` 连接配置（预留）。
+下文作为**策略讲解 + 历史实现记录**保留。
+
+---
+
+## 一、项目现状（历史记录）
+
+| 项 | 状态（当时） | 位置 |
 |---|---|---|
-| 依赖 `spring-boot-starter-data-redis` | ✅ 已引入 | `pom.xml` |
-| 连接配置 `host/port/password` | ✅ 已预留 | `application.yml` |
-| 缓存管理器 + 注解配置 | ✅ 已实现 | `RedisCacheConfig.java` |
-| 业务缓存（任务详情） | ✅ 已实现 | `ResearchTaskQueryService.getTaskDetail` |
+| 依赖 `spring-boot-starter-data-redis` | ✅ 已引入（现已被移除） | `pom.xml` |
+| 连接配置 `host/port/password` | ✅ 仍保留（预留） | `application.yml` |
+| 缓存管理器 + 注解配置 | 当时已实现（现已被移除） | `RedisCacheConfig.java` |
+| 业务缓存（任务详情） | 当时已实现（现已被移除） | `ResearchTaskQueryService.getTaskDetail` |
 
 本地开发默认未启动 Redis；只有连上 Redis 时缓存才生效。dev 模式若未装 Redis，需注意连接失败的处理（详见第八节）。
 
