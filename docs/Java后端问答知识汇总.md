@@ -6,6 +6,9 @@
 > 相关配套文档：
 > - `docs/SQL学习手册-CRUD与多表查询.md`
 > - `docs/Redis使用策略与实战手册.md`
+> - `docs/Spring生态三层对比与详解.md`
+> - `docs/Spring AOP详解与实战手册.md`
+> - `docs/Spring Bean与事务管理详解.md`（4.3 节 Bean、4.7 节事务的展开版）
 >
 > 项目内文件路径一律使用相对项目根目录的写法（如 `backend/src/main/java/...`），不带盘符。
 >
