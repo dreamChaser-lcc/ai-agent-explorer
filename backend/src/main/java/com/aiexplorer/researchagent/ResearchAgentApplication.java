@@ -25,6 +25,8 @@ public class ResearchAgentApplication {
      * @param args 命令行参数（本项目未使用）
      */
     public static void main(String[] args) {
+        // 版本标记日志：用于 K8s 滚动更新实验时区分镜像版本（1.0 无此行，1.1 新增）
+        System.out.println("[ResearchAgent] Starting version 1.1 ...");
         // 启动 Spring Boot 应用，传入当前类作为配置源
         SpringApplication.run(ResearchAgentApplication.class, args);
     }
