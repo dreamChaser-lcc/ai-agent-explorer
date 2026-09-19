@@ -39,7 +39,7 @@
   - [E.8 Pod 反亲和：让副本分散到不同节点](#e8-pod-反亲和让副本分散到不同节点)
   - [E.9 Ingress：给集群装统一大门](#e9-ingress给集群装统一大门)
   - [E.10 IP 静态化战役（2026-09-19，根治 NAT 漂移）](#e10-ip-静态化战役2026-09-19根治-nat-漂移)
-- [七、踩坑大全（P1-P20）](#七踩坑大全血泪经验务必先读)
+- [七、踩坑大全（P1-P21）](#七踩坑大全血泪经验务必先读)
 - [八、关键概念速查](#八关键概念速查脱离会话也能复习)
 - [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-19)
 - [十、未完成 / 待办学习项](#十未完成--待办学习项下次从这里续)
@@ -863,6 +863,7 @@ curl -s http://192.168.157.129/api/tasks                             # 404（不
 | P18 | ctr 导出的 tar 是截断的 | node1 import 报 `unrecognized image format`；tar 验证 `Unexpected EOF` | 对 OCI index（多平台索引）形态镜像，`ctr images export` 不带 `--platform` 会中途失败、留下半截文件 | 导出必须加 `--platform linux/amd64`；用 `tar -tf x.tar > /dev/null && echo 完整 \|\| echo 损坏` 先验证再传输 |
 | P19 | 节点静默掉线（IP 漂移致 agent 失联） | `ctr`/`kubectl` 报 socket 不存在；`kubectl get nodes` 变 NotReady；Pod 被悄悄迁到另一台（服务无感，故障被掩盖） | NAT DHCP 漂移 → agent 里写死的 `K3S_URL` 失配 → k3s-agent 起不来 | 根治：Netplan 静态 IP（两阶段法）+ DHCP 池避让，见 E.10；日常：开工先看 `get nodes` |
 | P20 | 同名旧 tar 冒充新镜像 | 新 Pod 探针 404 永不就绪（其他服务却正常）；两台 digest 一致但为旧值 | 多行粘贴漏跑某条 `docker save` → scp 传的还是旧文件（同名不可辨） | 单点重做 build/save 并核对 tar 时间戳；import 后核对 digest 变化；进阶用不可变 tag（详见《微服务实战复盘.md》9.9） |
+| P21 | 小盘跑 K8s → DiskPressure 驱逐风暴 | node1 9.8G 盘用至 87% → kubelet 驱逐成片 Pod（order 8 个、sentinel 30+ 个循环驱逐、三服务全下线）；随后新 Pod 拉不到镜像（磁盘高压下 Image GC 清掉了"无容器使用"的镜像） | **扩容四连补完**（growpart→pvresize→lvextend→resize2fs，9.8G→38G）；**镜像 tar 用完即删**；K8s 节点盘建议 ≥20G；认知：kubelet 保命双机制 = Eviction + Image GC（详见《微服务实战复盘.md》9.13-F） |
 
 ### LVM 磁盘扩容三连（P6/P7 解法，企业高频操作）
 
@@ -973,6 +974,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 **已完成（2026-09-13）：**
 
 - [x] 拍快照存档、node1 磁盘扩容（删快照合并 → VMware 扩盘 40G → LVM 四连 → 补拍快照）
+  - ⚠️ **2026-09-19 深夜复盘**：当时的"LVM 四连"实际**只做到"分区 + pvresize"**（分区 18.2G、PV 18.22G，但 VFree 8.22G 悬空、LV 仍 10G），**lvextend / resize2fs 未执行**——`df` 一直是 9.8G。当日深夜补齐完整四连并直推到 38G（87% → 23%），并亲历了"小盘爆满 → DiskPressure 驱逐风暴"的连锁事故（详见 P21 与《微服务实战复盘.md》9.13-F）
 - [x] **双节点 K3s 集群**：node1 以 agent 身份加入（含离线安装实战，见 E.6）
 - [x] **跨节点调度实验**：镜像搬运（含 ctr export --platform 坑，见 E.7）
 - [x] **Pod 反亲和**：副本分散到两节点（见 E.8）
@@ -980,7 +982,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 
 **待办：**
 
-- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断发布 ✅（2026-09-19，tcpSocket + actuator/httpGet 双路线，零中断验证通过）
+- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（2026-09-19：tcpSocket → actuator/httpGet → preStop+优雅停机+startupProbe 三篇）→ Sentinel Dashboard 可视化流控 ✅ → 彩蛋实验：Feign 限流×降级联动 ✅（2026-09-19）。**剩余：监控体系（Prometheus/Grafana）、配置中心深化、Nacos StatefulSet+PVC、迁移到真实项目**
 - [x] **（微服务延伸）Sentinel Dashboard**：已部署进 K8s（NodePort 30058）+ order-service 接入 + 流控实战（2026-09-19，详见《微服务实战复盘.md》9.11；含"自建镜像：白名单 403 → GitHub Release + 三重校验"的完整踩坑记录）
 - [ ] **Docker Desktop 长期加速**：Settings → Docker Engine 里补 `registry-mirrors`（写死 FROM 只是临时方案）
 - [ ] **（可选）修复 node1 → node2 免密登录**：当前 scp 仍需密码，重新 `ssh-copy-id` 一次
@@ -990,6 +992,8 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 - [ ] **K8s YAML 深化**：~~readinessProbe/livenessProbe~~ ✅（2026-09-19 落地，见微服务文档 9.8 / 9.9）、ConfigMap/Secret（配置解耦）、资源 requests/limits（防止 Pod 挤爆节点）
 - [x] **preStop + 优雅停机 + startupProbe**：零中断"完全体"落地（2026-09-19，详见《微服务实战复盘.md》9.10）
 - [ ] **node2 IP 收敛复核**：确认 Netplan 阶段② 完成、K3s 节点 IP 对齐 `.129`（见 E.10）
+- [x] **node1 磁盘扩容补完**：完整四连落地，根分区 9.8G → 38G（2026-09-19 深夜；09-13 悬案复盘见 P21）
+- [ ] **快照存档**：建议 `监控全链路-0919`（双节点；监控体系 + 扩容后状态）
 - [ ] **Nacos 鉴权企业级配置**：NACOS_AUTH_ENABLE=true 全家桶（默认不鉴权的对照）
 
 ---

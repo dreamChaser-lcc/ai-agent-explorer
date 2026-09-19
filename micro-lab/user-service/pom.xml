@@ -38,6 +38,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <!-- Prometheus 指标格式（监控篇）：让指标以 Prometheus 文本格式暴露到 /actuator/prometheus，供 Prometheus 定时抓取 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
