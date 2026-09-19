@@ -31,8 +31,15 @@ dist/
 coverage/
 
 # Spring Boot / Maven
-backend/target/
+target/
 *.class
+
+# micro-lab：镜像导出包（docker save 产物，勿入库）
+micro-lab/*.tar
+
+# sentinel-lab：下载的 jar 与镜像包（勿入库；Dockerfile 是构建配置，需提交）
+sentinel-lab/*.jar
+sentinel-lab/*.tar
 
 # 本地数据库与运行时文件
 data/

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.microlab</groupId>
+    <artifactId>micro-lab</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <!-- 父工程只做"版本管理 + 模块聚合"，不产出代码 -->
+    <packaging>pom</packaging>
+    <name>micro-lab</name>
+    <description>微服务教学项目：服务注册发现 / 服务调用 / 配置中心 / 网关 / 熔断限流</description>
+
+    <modules>
+        <module>user-service</module>
+        <module>order-service</module>
+        <module>gateway</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!--
+          版本组合（三件套必须配套，这是 Spring Cloud 的第一个大坑）：
+          Spring Cloud Alibaba 官方适配关系：Boot 3.2.x + Cloud 2023.0.1 + Alibaba 2023.0.1.0
+          先按这组跑通；以后想升级版本，只改这三行，再统一回归测试即可。
+        -->
+        <spring-boot.version>3.2.4</spring-boot.version>
+        <spring-cloud.version>2023.0.1</spring-cloud.version>
+        <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot 官方依赖清单：引入后子模块写依赖不用带版本号 -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud 依赖清单 -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud Alibaba 依赖清单（Nacos / Sentinel 等版本由它管） -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <!--
+                      ★ 关键：必须显式声明 repackage 执行。
+                      标准 Spring Boot 项目继承 spring-boot-starter-parent 时，
+                      这段 execution 由其父 POM【预定义】，项目里只写 <plugin> 声明即可；
+                      本项目用的是自建父 POM（只 import BOM、不继承 starter-parent），
+                      因此必须在此显式声明——否则 mvn package 只产出普通 jar（无 Main-Class），
+                      容器里 java -jar 会报 "no main manifest attribute"。
+                    -->
+                    <executions>
+                        <execution>
+                            <id>repackage</id>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

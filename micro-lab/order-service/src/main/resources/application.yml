@@ -1,0 +1,28 @@
+server:
+  # 订单服务端口（user-service 用 8081，gateway 用 9090，避免冲突）
+  port: 8082
+
+spring:
+  application:
+    # 服务名：注册到 Nacos 后，其他服务靠这个名字找到它
+    name: order-service
+  cloud:
+    nacos:
+      discovery:
+        # Nacos 服务器地址（K8s 里的 Nacos，经 node2 的 NodePort 暴露）
+        # 注意：Nacos 2.x 客户端还会连接「本端口 + 1000」的 gRPC 端口（31048），
+        #       所以 Nacos 的 Service 需同时映射 30048（HTTP）与 31048（gRPC）
+        server-addr: 192.168.157.129:30048
+    sentinel:
+      # 应用启动即完成 Sentinel 初始化（不配的话是懒加载：第一次请求才初始化）
+      eager: true
+      transport:
+        # Sentinel 客户端与本地通信的端口
+        port: 8719
+        # 若之后部署了 Sentinel 控制台，把地址填在这里（当前教学未部署，留作可选）
+        # dashboard: 192.168.157.129:30050
+
+# 开启 Feign 与 Sentinel 的整合：只有开启它，@FeignClient 上配置的 fallback 才会生效
+feign:
+  sentinel:
+    enabled: true

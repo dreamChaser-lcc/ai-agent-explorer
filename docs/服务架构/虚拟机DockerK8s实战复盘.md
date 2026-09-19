@@ -34,9 +34,14 @@
   - [E.3 Deployment+Service YAML](#e3-deployment--service-yaml)
   - [E.4 四大能力实战（扩容/自愈/滚动/回滚）](#e4-四大能力实战全部亲测通过)
   - [E.5 kubectl 运维命令速查](#e5-kubectl-运维命令速查)
-- [七、踩坑大全（P1-P15）](#七踩坑大全血泪经验务必先读)
+  - [E.6 双节点集群：node1 加入集群（2026-09-13）](#e6-双节点集群node1-加入集群)
+  - [E.7 跨节点调度实战：镜像搬运与扩容](#e7-跨节点调度实战镜像搬运与扩容)
+  - [E.8 Pod 反亲和：让副本分散到不同节点](#e8-pod-反亲和让副本分散到不同节点)
+  - [E.9 Ingress：给集群装统一大门](#e9-ingress给集群装统一大门)
+  - [E.10 IP 静态化战役（2026-09-19，根治 NAT 漂移）](#e10-ip-静态化战役2026-09-19根治-nat-漂移)
+- [七、踩坑大全（P1-P20）](#七踩坑大全血泪经验务必先读)
 - [八、关键概念速查](#八关键概念速查脱离会话也能复习)
-- [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-08)
+- [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-19)
 - [十、未完成 / 待办学习项](#十未完成--待办学习项下次从这里续)
 - [十一、推荐学习顺序回顾](#十一推荐学习顺序回顾)
 
@@ -69,20 +74,25 @@ Windows 宿主机（开发机）
 │   │     ├── my-nacos（Nacos 2.3.2 容器，8848/9848）
 │   │     ├── my-mysql（MySQL 8.0 容器，3306，数据挂载）
 │   │     ├── my-nginx（Nginx 容器，8080）
-│   │     └── research-agent（项目镜像容器，8081）
+│   │     └── research-agent（项目镜像容器，8081）［可退役，职能已由 K8s Pod 接管］
 │   └── node2（lccserver-node2）      Ubuntu 22.04 Server + Docker + K3s(K8s)
-│         └── K3s 单节点集群
-│               └── Deployment research-agent（1.1，2副本）→ NodePort 30081
+│         └── K3s 双节点集群（2026-09-13 起）
+│               ├── node2 = server（控制平面）
+│               ├── node1 = agent（工作节点，2026-09-13 加入）
+│               └── Deployment research-agent（1.1，2副本，podAntiAffinity 分散两节点）
+│                     └── Service NodePort 30081（两台节点 IP 均可访问）
 │
 └── Docker Desktop                    ［可选/开发用］装在 D:\softwares\Docker
       └── WSL2 底座 + 本地构建 research-agent:1.0 / 1.1 镜像
 ```
 
-### 1.3 主机与 IP（重要：NAT 动态 IP）
+### 1.3 主机与 IP（2026-09-19 起静态化，根治漂移）
 
-- 两台虚拟机都是 VMware **NAT 模式**，重启后 IP 可能变化。
+- 两台虚拟机都是 VMware **NAT 模式**；**2026-09-19 完成 Netplan 静态 IP 改造**（背景：IP 漂移已多次引发故障，最严重一次导致 node1 的 K3s agent 静默掉线、节点 NotReady 半天无人察觉——完整战役见 E.10）。
 - 判断是哪台机器**一律以 `hostname` 为准**，不要凭 IP 数字猜。
-- 最后一次确认：node2 = `192.168.157.128`（以 `ip addr` 实时查为准）。
+- 固定地址（目标值）：**node1（lccserver）= `192.168.157.128`**、**node2（lccserver-node2）= `192.168.157.129`**；配套把 VMware DHCP 池起始挪到 `.150`（服务器静态区与 DHCP 池分离）。
+- 收敛进度：node1 已固定 `.128` ✅；node2 待复核（2026-09-19 时 K8s 仍显示 `.130`，需确认 Netplan 阶段②与 K3s 节点 IP 是否已对齐 `.129`）。
+- ⚠️ 宿主机开着 **VPN** 时会连带影响虚拟机的 DNS 解析（NAT 转发宿主机的 DNS），排查任何"网络怪象"时，先确认 VPN 已关（见 P17）。
 
 ```bash
 hostname    # node1 是 lccserver；node2 是 lccserver-node2
@@ -471,16 +481,19 @@ curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | INSTALL_K3S_MIR
 验证与权限修复：
 
 ```bash
-sudo k3s kubectl get nodes        # Ready 即成功
+sudo k3s kubectl get nodes        # Ready 即成功（以 root 身份读 k3s.yaml，先绕过权限）
 
-# 永久修复 kubectl 权限（K3s 重启会把 /etc/rancher/k3s/k3s.yaml 重置回 600）
+# 永久修复 kubectl 权限（三步缺一不可：建副本 → 清旧变量 → 用 KUBECONFIG 指向副本）
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown lcc:lcc ~/.kube/config
-sed -i '/KUBECONFIG/d' ~/.bashrc    # 删掉指向 /etc 的 export（它会被重置权限）
-unset KUBECONFIG
+sed -i '/KUBECONFIG/d' ~/.bashrc                            # ① 清掉所有旧 export（尤其指向 /etc 的坏 export）
+echo 'export KUBECONFIG=$HOME/.kube/config' >> ~/.bashrc    # ② 关键！K3s 的 kubectl 不会自动读 ~/.kube/config，必须显式指向副本
+source ~/.bashrc                                            # ③ 立即生效（或新开窗口）
 kubectl get nodes
 ```
+
+> ⚠️ 2026-09-13 修正：旧版步骤（只 cp 副本 + 删 export）**不完整**。K3s 的 `kubectl` 是包装器：`KUBECONFIG` 为空时它**不会**回退读 `~/.kube/config`，而是直接读 `/etc/rancher/k3s/k3s.yaml`——该文件被 K3s 重启重置为 600（root 专属）时报 `permission denied`。所以**必须用 `KUBECONFIG` 显式指向副本**（本坑于 2026-09-13 实际复发验证过）。安装时的 `INSTALL_K3S_KUBECONFIG_MODE=644` 只让文件短期可读，K3s 重启后可能被打回 600。
 
 ### E.2 国内加速 + 镜像导入（K3s 用 containerd，不是 Docker！）
 
@@ -585,6 +598,247 @@ kubectl explain deployment.spec...    # 万能字段查询
 
 ---
 
+### E.6 双节点集群：node1 加入集群
+
+**目标**：让 node1（lccserver）以 agent 身份加入 node2（lccserver-node2）的 K3s 集群，从"单机"升级为"1 台 server + 1 台 agent"的真实双节点。
+
+**先理解角色与原理**：
+
+| 角色 | 干什么 | 本环境 |
+|------|--------|--------|
+| server | 控制平面：API Server、调度器、控制器（集群的大脑） | node2 |
+| agent | 工作节点：kubelet + containerd，负责跑 Pod | node1（本次加入） |
+
+加入集群只需要两样东西：`K3S_URL`（server 的 API 地址）+ `K3S_TOKEN`（入场券，藏在 server 的 `/var/lib/rancher/k3s/server/node-token`）。
+
+⚠️ 方向很重要：**是 node1 主动"找上门"注册**（安装命令在 node1 上执行），node2 只是被动验证 token、发证书、记入花名册。kubectl 无法"添加节点"——因为成为节点要在那台机器本机安装一堆组件（kubelet、容器运行时、网络插件），远程做不了，这正是 K8s 的设计。
+
+**Step 1：在 node2 上取"入场券"**
+
+```bash
+kubectl get nodes                                   # 确认 node2 是 Ready
+ip -4 addr show ens33 | grep inet                   # 实时查 node2 的 IP（2026-09-13 为 192.168.157.129）
+sudo cat /var/lib/rancher/k3s/server/node-token     # 复制整串 token（形如 K10xxx::server:yyy）
+```
+
+**Step 2：在 node1 上做加入前准备**
+
+```bash
+# ① 连通性：能摸到 node2 的 API 端口（返回 401 Unauthorized 的 JSON = 通！"请出示凭证"正是预期）
+curl -k https://192.168.157.129:6443/version
+
+# ② 镜像加速配置（防 pause 沙箱镜像拉不动——node2 当初就栽在这，P9）
+sudo mkdir -p /etc/rancher/k3s
+sudo tee /etc/rancher/k3s/registries.yaml <<'EOF'
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://docker.m.daocloud.io"
+EOF
+```
+
+**Step 3：执行 join（整行一次性粘贴！）**
+
+```bash
+curl -sfL https://rancher-mirror.rancher.cn/k3s/k3s-install.sh | INSTALL_K3S_MIRROR=cn K3S_URL=https://192.168.157.129:6443 K3S_TOKEN=<整串token> sh -
+```
+
+参数拆解：
+- `curl -sfL`：`-s` 安静模式；`-f` HTTP 出错时静默失败（避免把错误页当脚本执行）；`-L` 跟随重定向；
+- `| sh -`：下载到的脚本交给 sh 执行；
+- `INSTALL_K3S_MIRROR=cn`：走 Rancher 中文镜像下载二进制；
+- `K3S_URL=...`：**有它 = 装 agent**，没有 = 装 server（这就是装 server 和 agent 的唯一区别）；
+- `K3S_TOKEN=...`：入场券。
+
+**⭐ 实战特殊情况：镜像站下线，改走"离线安装（air-gap）"**
+
+实战当天 rancher-mirror.rancher.cn 被阿里云 CDN 下线（DNS 解析到 `169.254.254.254` + `offline.specialcdnstatus.com`，详见 P16），全流程改为**离线安装**——这也是企业内网无外网时的标准姿势：
+
+```bash
+# ① 换源拿到安装脚本（jsdelivr 加速 GitHub 内容；卡的话还有 GitHub 原始地址/ghproxy 备选）
+curl -sfL --max-time 20 https://cdn.jsdelivr.net/gh/k3s-io/k3s@master/install.sh -o /tmp/k3s-install.sh
+wc -l /tmp/k3s-install.sh                          # 约 1200 行即为正常
+
+# ② 二进制不用下载——从 node2 直接"搬"（同版本 v1.36.4+k3s1，内网秒传）
+#    node1 上执行（会输一次密码）：
+scp lcc@192.168.157.129:/usr/local/bin/k3s /tmp/k3s     # 约 75MB
+sudo install -m 0755 /tmp/k3s /usr/local/bin/k3s        # 拷贝 + 设置可执行权限（一条到位）
+k3s --version                                           # 验证：v1.36.4+k3s1（必须与 server 同版本）
+
+# ③ 离线执行安装（SKIP_DOWNLOAD 跳过一切联网下载）
+INSTALL_K3S_SKIP_DOWNLOAD=true K3S_URL=https://192.168.157.129:6443 K3S_TOKEN=<整串token> sh /tmp/k3s-install.sh
+```
+
+- `INSTALL_K3S_SKIP_DOWNLOAD=true`：告诉脚本"二进制已就位，别去下载了"——**企业 air-gap 安装的核心开关**。
+
+**Step 4：验证**
+
+```bash
+# node1 上：服务状态
+sudo systemctl status k3s-agent --no-pager      # 期望 Active: active (running)
+
+# node2 上：看集群成员
+kubectl get nodes -o wide                        # 期望两行：lccserver + lccserver-node2 都 Ready
+```
+
+刚加入的 node1 可能短暂 `NotReady`（CNI 网络初始化中），10~30 秒后自动转 Ready。
+
+**三个配套知识点**：
+
+1. **agent 节点的 kubectl 真相**：join 后 K3s 会在 node1 装上 `kubectl` 命令（符号链接，命令本体是 k3s 二进制），**但没有 kubeconfig 凭证**——直接敲 kubectl 会去连 `localhost:8080` 报 `connection refused`。记住口诀：**客户端命令人人有，钥匙（kubeconfig）只在 server**；日常 kubectl 都在 node2 上敲。
+   （可选进阶）想让 node1 也能敲 kubectl：把 node2 的 `~/.kube/config` 拷过来，**然后把其中 server 地址从 `127.0.0.1` 改成 node2 的 IP**（同一份配置在不同机器上，"localhost"指向的主机不同），再配 `export KUBECONFIG=$HOME/.kube/config`。
+2. **NodePort 在所有节点监听**：Service 为 NodePort 类型时，**每一台节点都会监听 30081**——所以 `http://192.168.157.128:30081`（node1）和 `http://192.168.157.129:30081`（node2）都能访问服务（从 Windows 也是）。
+3. **Pod IP 按节点分段**：flannel 把集群 Pod 网段（10.42.0.0/16）按节点切成 /24 子网——node2 上的 Pod 是 `10.42.0.x`，node1 上是 `10.42.1.x`，跨节点通信走 VXLAN 隧道。
+
+---
+
+### E.7 跨节点调度实战：镜像搬运与扩容
+
+**为什么要把镜像"搬"到 node1**：K3s 用的是**自带的 containerd**（不是 Docker），两者镜像仓库互相独立；`research-agent:1.1` 这个 tag 不带仓库地址，公网也拉不到。所以要手动搬运——这正是企业里"离线镜像交付"的日常。
+
+**镜像搬运三连（node2 → node1）**：
+
+```bash
+# 【node2】① 从 containerd 导出成 tar（务必带 --platform！教训见 P18）
+sudo k3s ctr -n k8s.io images ls | grep research-agent       # 先确认镜像的完整名字
+sudo k3s ctr -n k8s.io images export --platform linux/amd64 /tmp/research-agent-1.1.tar docker.io/library/research-agent:1.1
+
+# 【node1】② 拉取（会输一次密码）
+scp lcc@192.168.157.129:/tmp/research-agent-1.1.tar /tmp/
+
+# 【node1】③ 导入（k8s.io 命名空间不能省，P9）
+tar -tf /tmp/research-agent-1.1.tar > /dev/null && echo "tar 完整 ✓" || echo "tar 损坏 ✗"    # 先验完整性再导入
+sudo k3s ctr -n k8s.io images import /tmp/research-agent-1.1.tar
+sudo k3s ctr -n k8s.io images ls | grep research-agent          # 看到 1.1 即成功
+```
+
+**扩容，观察跨节点分布**：
+
+```bash
+# 【node2】
+kubectl get pods -o wide                  # 现状：2 个 Pod 全在 node2
+kubectl scale deployment research-agent --replicas=4
+kubectl get pods -o wide                  # 观察新 Pod 落到哪台
+```
+
+**实战结果**：2 个新 Pod 被调度到 node1 并 `Running`——搬运全链路（导出 → 传输 → 导入 → 调度 → 拉镜像 → 起容器）一次打通：
+
+```
+research-agent-xxx-8kgtm   1/1  Running   10.42.1.4     lccserver         ← node1 的 Pod 段 10.42.1.x
+research-agent-xxx-m24bw   1/1  Running   10.42.1.3     lccserver
+research-agent-xxx-vlkl9   1/1  Running   10.42.0.199   lccserver-node2   ← node2 的 Pod 段 10.42.0.x
+research-agent-xxx-xqklh   1/1  Running   10.42.0.194   lccserver-node2
+```
+
+---
+
+### E.8 Pod 反亲和：让副本分散到不同节点
+
+**现象**：缩容回 2 副本后（`kubectl scale deployment research-agent --replicas=2`），两个 Pod 又都挤在 node2 了。为什么？
+
+**因为调度器默认不管"同一应用的 Pod 是否分散"**——它只按资源与打分挑节点；缩容时删哪几个 Pod 由控制器决定（恰好把 node1 上那两个删了）。"要分散"必须**声明约束**。
+
+**解法：Pod 反亲和（podAntiAffinity）**——告诉调度器"带这个标签的 Pod，尽量别放在同一节点"。修改 `~/k8s-lab/research-agent.yaml`，在 `template.spec` 下加 `affinity` 段：
+
+```yaml
+spec:
+  affinity:                                                  # 调度亲和性配置段
+    podAntiAffinity:                                         # Pod 反亲和：让 Pod 互相"避开"
+      preferredDuringSchedulingIgnoredDuringExecution:       # 软约束：尽量满足；满足不了也允许调度
+        - weight: 100                                        # 权重 1~100，越大越优先满足这条
+          podAffinityTerm:
+            labelSelector:                                   # "避开谁"：带这些标签的 Pod
+              matchLabels:
+                app: research-agent
+            topologyKey: kubernetes.io/hostname              # "分散单位"：按节点（hostname 标签每节点唯一）
+  containers:
+    - name: research-agent
+      image: research-agent:1.1
+```
+
+```bash
+cp ~/k8s-lab/research-agent.yaml ~/k8s-lab/research-agent.yaml.bak   # 改前备份
+kubectl apply -f ~/k8s-lab/research-agent.yaml                       # Pod 模板变了 → 触发滚动更新
+kubectl rollout status deployment/research-agent
+kubectl get pods -o wide                                             # 期望：一台节点一个
+```
+
+**延伸知识点**：
+
+1. **软 vs 硬**：`preferred...`（软约束）换成 `requiredDuringSchedulingIgnoredDuringExecution`（硬约束）= "绝不允许同节点"，⚠️ 但**副本数超过节点数时多出的 Pod 会永远 Pending**，生产一般用软约束；
+2. **topologyKey 决定"分散单位"**：`kubernetes.io/hostname` = 按节点；换成机架/可用区标签就是"机房级分散"（跨机房高可用靠这层）；
+3. **现代替代**：`topologySpreadConstraints`（拓扑分布约束）写法更直观、能力更强，新项目常用；podAntiAffinity 是经典写法，面试高频；
+4. 面试常问：**"怎么保证服务的多个副本不堆在一台机器上？"** → 答 podAntiAffinity。
+
+---
+
+### E.9 Ingress：给集群装统一大门
+
+**为什么需要**：NodePort 的三个局限——端口号难看（30081）、每个服务占一个端口、没有域名 / HTTPS / 路径分流。Ingress 就是解决这些的：它是 **HTTP 层（七层）路由规则**，按域名/路径把流量转发到不同 Service，全部收敛到 80/443 两个端口。
+
+| 概念 | 是什么 | 类比 |
+|------|--------|------|
+| Ingress | 一份路由规则清单（YAML 资源） | 门口的指示牌 |
+| Ingress Controller | 真正干活的反向代理（Traefik / Nginx Ingress Controller） | 站岗的保安，按指示牌放行 |
+
+> 关键认知：**Ingress 按 Service 名字路由（不写 IP）**——Pod 扩容/重建/漂移，规则一个字都不用改；规则 apply 后 Controller 自动生效，无需手工 reload。这是与"手工改 nginx.conf"的本质区别。nginx 并不是被 Ingress 替代，它本身就是 Controller 最常见的实现（Nginx Ingress Controller）——在 K8s 外（后端地址固定的传统部署）手工 nginx 仍是标准答案。
+
+**K3s 自带 Traefik，无需安装**。先确认：
+
+```bash
+kubectl get pods -n kube-system | grep traefik
+kubectl get svc -n kube-system | grep traefik      # 显示 80/443（由 ServiceLB 在各节点监听）
+```
+
+（K3s 没有云厂商的 LB，用自带的 ServiceLB/klipper-lb 实现 LoadBalancer 类型：每台节点起一个小 Pod，用 hostPort 占住 80/443，把流量转给 Traefik——所以从任意节点 IP 的 80 端口都能进入。）
+
+**写 Ingress 规则（~/k8s-lab/research-agent-ingress.yaml）**：
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: research-agent-ingress
+spec:
+  rules:
+    - host: research.local          # 域名匹配（对应 HTTP 请求头里的 Host 字段）
+      http:
+        paths:
+          - path: /                 # 路径
+            pathType: Prefix        # Prefix = 前缀匹配（/ 即全匹配）
+            backend:
+              service:
+                name: research-agent-svc    # 转发目标：Service 名字（不是 IP！）
+                port:
+                  number: 8080
+```
+
+```bash
+kubectl apply -f ~/k8s-lab/research-agent-ingress.yaml
+kubectl get ingress
+```
+
+**验证（关键理解 Host 头）**：
+
+```bash
+curl -s -H "Host: research.local" http://192.168.157.129/api/tasks   # 200（命中路由）
+curl -s http://192.168.157.129/api/tasks                             # 404（不带 Host = 无匹配路由）
+```
+
+- `-H "Host: ..."`：手动指定 HTTP 请求头，用 Host 头"假装"域名（还没有 DNS 解析时的标准测试手法）；
+- 体验真实域名：Windows 的 `C:\Windows\System32\drivers\etc\hosts` 加一行 `192.168.157.129  research.local`，浏览器直接访问 `http://research.local/api/tasks`。
+
+**NodePort vs Ingress 对比**：
+
+| 维度 | NodePort | Ingress |
+|------|----------|---------|
+| 访问方式 | `IP:30081`（每个服务占一个端口） | `http://域名/路径`（统一 80/443） |
+| 路由依据 | 端口 | 域名 / 路径（七层） |
+| HTTPS | 麻烦 | 配 tls 段 + 证书即可（进阶） |
+| 后端变化 | Service 自动跟踪 | 同左，且规则是可读的 YAML |
+
+---
+
 ## 七、踩坑大全（血泪经验，务必先读）
 
 | # | 坑 | 现象 | 根因 | 解法 |
@@ -603,7 +857,12 @@ kubectl explain deployment.spec...    # 万能字段查询
 | P12 | kubectl 权限反复丢 | permission denied | K3s 重启重置 k3s.yaml 权限 | ~/.kube/config 副本方案（见 E.1） |
 | P13 | apply 与 set image 混用警告 | last-applied-configuration 注解失效 | 声明式 vs 命令式混用 | 一个资源只用一种方式管理 |
 | P14 | rollout undo --to-revision 找不到 | unable to find revision | history 只保留近版本 | 先 rollout history 查号 |
-| P15 | K3s 的 k3s.yaml 重启重置 | chmod 644 白做 | 服务重启重置权限 | 永久方案见 E.1 |
+| P15 | K3s 的 k3s.yaml 重启重置 | chmod 644 白做 | 服务重启重置权限（与 P12 同一根因） | 永久方案见 E.1 修正版 |
+| P16 | 镜像站被 CDN 下线 | curl 退出码 7；DNS 解析到 169.254.254.254 / offline.specialcdnstatus.com | rancher-mirror.rancher.cn 加速域名被阿里云 CDN 下线（公共 DNS 223.5.5.5 也是同样结果——站点侧问题，非本地故障） | 换源（jsdelivr 拿 install.sh）+ 离线安装（air-gap），见 E.6 |
+| P17 | 宿主机 VPN 劫持虚拟机 DNS | 虚拟机解析域名得到怪地址（如 169.254.x.x）或连不上 | 宿主机开 VPN 时，NAT 虚拟机的 DNS 查询走宿主机、被 VPN 接管 | 关 VPN + 清缓存（Windows `ipconfig /flushdns`、Linux `sudo resolvectl flush-caches`）；排查网络怪象先确认 VPN 状态 |
+| P18 | ctr 导出的 tar 是截断的 | node1 import 报 `unrecognized image format`；tar 验证 `Unexpected EOF` | 对 OCI index（多平台索引）形态镜像，`ctr images export` 不带 `--platform` 会中途失败、留下半截文件 | 导出必须加 `--platform linux/amd64`；用 `tar -tf x.tar > /dev/null && echo 完整 \|\| echo 损坏` 先验证再传输 |
+| P19 | 节点静默掉线（IP 漂移致 agent 失联） | `ctr`/`kubectl` 报 socket 不存在；`kubectl get nodes` 变 NotReady；Pod 被悄悄迁到另一台（服务无感，故障被掩盖） | NAT DHCP 漂移 → agent 里写死的 `K3S_URL` 失配 → k3s-agent 起不来 | 根治：Netplan 静态 IP（两阶段法）+ DHCP 池避让，见 E.10；日常：开工先看 `get nodes` |
+| P20 | 同名旧 tar 冒充新镜像 | 新 Pod 探针 404 永不就绪（其他服务却正常）；两台 digest 一致但为旧值 | 多行粘贴漏跑某条 `docker save` → scp 传的还是旧文件（同名不可辨） | 单点重做 build/save 并核对 tar 时间戳；import 后核对 digest 变化；进阶用不可变 tag（详见《微服务实战复盘.md》9.9） |
 
 ### LVM 磁盘扩容三连（P6/P7 解法，企业高频操作）
 
@@ -642,33 +901,95 @@ df -h                                          # 验证：根分区应变大
 | Service(NodePort) | 给 Pod 固定门牌号，按 label 转发，Pod 换 IP 无感 |
 | 滚动更新 | 新副本 Ready 才杀旧副本，全程不中断 |
 | 声明式 vs 命令式 | apply(yaml)=声明期望态；set image/rollout=直接改；别混用 |
+| Pod 反亲和 | 让同一应用的 Pod 分散到不同节点（高可用部署标配，见 E.8） |
+| air-gap 离线安装 | 无外网环境装 K3s：拷二进制 + `INSTALL_K3S_SKIP_DOWNLOAD=true` 执行脚本（见 E.6） |
+| kubeconfig 视角 | 同一份 kubeconfig 在不同机器用要改 server 地址（localhost 指向"自己"） |
+| Ingress | HTTP 层统一入口：按域名/路径把流量路由到不同 Service（NodePort 的进化版；已实践，见 E.9） |
+
+### Pod 状态速查（Phase / 显示状态 / Terminating，2026-09-19 增补）
+
+**两层概念**：`kubectl get pods` 的 STATUS 列是"**智能摘要**"——K8s 官方真正的状态叫 **Phase**（只有 5 个）；其余常见值（ContainerCreating、CrashLoopBackOff、Terminating…）是 kubectl 按优先级挑出来显示的"细节状态"（底层 Phase 可能仍是 Running/Pending）。
+
+**5 个官方 Phase**：
+
+| Phase | 含义 | 何时出现 |
+|-------|------|---------|
+| `Pending` | 已接受，但还没跑起来 | 调度中 / 拉镜像 / 建容器 |
+| `Running` | 已绑定节点，至少一个容器活着（含启动/重启中） | 正常工作态 |
+| `Succeeded` | 所有容器正常退出（exit 0）且不再重启 | 一次性任务（Job）完成 |
+| `Failed` | 容器结束，且至少一个异常退出 | 任务失败 |
+| `Unknown` | 拿不到状态 | 通常与节点失联（kubelet 通信断） |
+
+**STATUS 列常见"显示状态"**：
+
+| 显示值 | 实际意思 | 底层 Phase |
+|--------|---------|-----------|
+| `ContainerCreating` | 正在创建容器（拉镜像/挂卷） | Pending |
+| `ImagePullBackOff` | 拉镜像失败，退避重试中 | Pending |
+| `CrashLoopBackOff` | 容器反复崩溃 + 退避重启 | Running |
+| `Error` | 容器异常退出 | Running / Failed |
+| `Completed` | 正常结束 | Succeeded |
+| `Evicted` | 被节点驱逐（资源不足，如磁盘压力） | Failed |
+| `Terminating` | 正在被删除（终止流程进行中） | 通常 Running |
+
+**Terminating 详解**：
+
+- 它不是独立 Phase——判定条件 = "收到删除请求（`deletionTimestamp` 有值）+ 对象未清理完"；
+- **停留时长 = 你配置的"善后时间"**：`① 从 Endpoints 摘牌 → ② 执行 preStop（如配了 sleep 5）→ ③ SIGTERM + 优雅停机处理在途请求 → ④ 退出清理`——配了 preStop 后会稳定停留约 5 秒（2026-09-19 实验可见），没配几乎是瞬灭；
+- **卡死不消失的常见原因**：容器不响应 SIGTERM（等满 `terminationGracePeriodSeconds`，默认 30s）、finalizer 未完成、**节点失联（kubelet 挂了）**——后者确认后可强制删除：`kubectl delete pod <名> --grace-period=0 --force`（掀桌子模式，慎用）。
+
+**查看"真相"三连**：
+
+```bash
+kubectl get pod <名>                                  # 摘要视图（智能 STATUS 列）
+kubectl get pod <名> -o jsonpath='{.status.phase}'    # 官方 Phase（权威）
+kubectl describe pod <名>                              # 人类友好版：Conditions + Events
+```
+
+**关联概念**：Pod 除 Phase 外还有一组 **Conditions**（`PodScheduled` / `Initialized` / `ContainersReady` / **`Ready`**）——探针影响的正是 `Ready`：readiness 通过 → `Ready=True` → 进 Endpoints → 才有流量。
 
 ---
 
-## 九、当前环境状态清单（截至 2026-09-08）
+## 九、当前环境状态清单（截至 2026-09-19）
 
 | 项 | 状态 |
 |----|------|
 | Windows Docker Desktop | 已装 D:\softwares\Docker，WSL2 底座，本地镜像 1.0/1.1 |
-| node1（lccserver） | Docker 全家桶 + research-agent 容器(8081)，磁盘**待扩容**（10G 小盘） |
-| node2（lccserver-node2） | Docker + K3s v1.36 + research-agent **1.1** Deployment(2副本, NodePort 30081) |
+| node1（lccserver） | Docker 全家桶（Nacos/MySQL/Nginx/旧 research-agent 容器）+ **K3s agent**（2026-09-13 加入）；磁盘已扩容（根分区 38G） |
+| node2（lccserver-node2） | Docker + K3s **server**（v1.36.4+k3s1） |
+| 集群形态 | **双节点**：node2 = control-plane，node1 = agent，均 Ready |
+| 静态 IP（改造中） | node1 已固定 `.128` ✅；node2 目标 `.129`（2026-09-19 时 K8s 仍显示 `.130`，待复核收敛）；DHCP 池已挪 `.150+`（见 E.10） |
+| research-agent | **1.1** Deployment（2 副本，podAntiAffinity 分散两节点）+ Service NodePort 30081（两台节点 IP 均可访问） |
+| 镜像分布 | research-agent 1.1 + micro-lab 三镜像（user-service / order-service / gateway）均在两台节点的 k8s.io 命名空间 |
 | node2 磁盘/内存 | 根分区 38G（已扩容），内存 6G |
 | 代码改动 | `ResearchAgentApplication.java` main 加了 “Starting version 1.1” 标记日志 |
 | 后端 Dockerfile | `backend/Dockerfile`（多阶段 + 加速源 + 非 root）已就绪 |
-| K8s 服务 | curl 30081 正常，镜像在 k8s.io 命名空间 |
+| 快照 | node2 “K3s-1.1稳定版”、node1 “扩容完成 / Docker就绪”（VMware 快照回滚点） |
 
 ---
 
 ## 十、未完成 / 待办学习项（下次从这里续）
 
-- [ ] **拍快照存档**（强烈建议先做）：VMware → node2 → 快照“K3s-1.1稳定版”；node1 → “Docker全家桶就绪”
-- [ ] **node1 磁盘扩容**：同 node2 的 LVM 三连（P6/P7 解法），防患未然
+**已完成（2026-09-13）：**
+
+- [x] 拍快照存档、node1 磁盘扩容（删快照合并 → VMware 扩盘 40G → LVM 四连 → 补拍快照）
+- [x] **双节点 K3s 集群**：node1 以 agent 身份加入（含离线安装实战，见 E.6）
+- [x] **跨节点调度实验**：镜像搬运（含 ctr export --platform 坑，见 E.7）
+- [x] **Pod 反亲和**：副本分散到两节点（见 E.8）
+- [x] **Ingress**：NodePort → Ingress 统一入口（K3s 自带 Traefik；域名 research.local 路由到 research-agent-svc，见 E.9）
+
+**待办：**
+
+- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断发布 ✅（2026-09-19，tcpSocket + actuator/httpGet 双路线，零中断验证通过）
+- [x] **（微服务延伸）Sentinel Dashboard**：已部署进 K8s（NodePort 30058）+ order-service 接入 + 流控实战（2026-09-19，详见《微服务实战复盘.md》9.11；含"自建镜像：白名单 403 → GitHub Release + 三重校验"的完整踩坑记录）
 - [ ] **Docker Desktop 长期加速**：Settings → Docker Engine 里补 `registry-mirrors`（写死 FROM 只是临时方案）
-- [ ] **双节点 K3s 集群**：把 node1 以 agent 身份加入 node2 的 K3s（K3S_URL + K3S_TOKEN），体验真实多节点调度
-- [ ] **Ingress**：把 NodePort 换成 Ingress 统一入口（对应学习笔记 Ingress=大门）
+- [ ] **（可选）修复 node1 → node2 免密登录**：当前 scp 仍需密码，重新 `ssh-copy-id` 一次
+- [ ] **（可选）体验 tmux**：服务器会话保持工具，长操作防 SSH 断线
 - [ ] **CI/CD 概念落地**：手工 save/scp/load 是流水线原始版；进阶可用 GitLab CI / GitHub Actions 自动化
 - [ ] **给前端打镜像**：本项目 frontend（Next.js）可复用同一套多阶段 + Dockerfile 思路
-- [ ] **K8s YAML 深化**：readinessProbe/livenessProbe（让滚动更新更智能）、ConfigMap/Secret（配置解耦）、资源 requests/limits（防止 Pod 挤爆节点）
+- [ ] **K8s YAML 深化**：~~readinessProbe/livenessProbe~~ ✅（2026-09-19 落地，见微服务文档 9.8 / 9.9）、ConfigMap/Secret（配置解耦）、资源 requests/limits（防止 Pod 挤爆节点）
+- [x] **preStop + 优雅停机 + startupProbe**：零中断"完全体"落地（2026-09-19，详见《微服务实战复盘.md》9.10）
+- [ ] **node2 IP 收敛复核**：确认 Netplan 阶段② 完成、K3s 节点 IP 对齐 `.129`（见 E.10）
 - [ ] **Nacos 鉴权企业级配置**：NACOS_AUTH_ENABLE=true 全家桶（默认不鉴权的对照）
 
 ---
@@ -678,7 +999,8 @@ df -h                                          # 验证：根分区应变大
 ```
 阶段1 本机：MySQL + Spring Boot + Nginx（项目已跑通，跳过）
 阶段2 Docker：本文件 阶段B/C/D（已通）
-阶段3 K8s：本文件 阶段E（已通），继续上面"待办"深化
+阶段3 K8s 单节点：本文件 阶段E（已通）
+阶段4 K8s 双节点：本文件 E.6~E.8（已通），继续上面"待办"深化
 ```
 
 > 判断自己“真会了”的标准：不看文档，能把 阶段D.4 的 Dockerfile 和 阶段E.3 的 YAML 默写出来，并解释每个字段为什么存在。

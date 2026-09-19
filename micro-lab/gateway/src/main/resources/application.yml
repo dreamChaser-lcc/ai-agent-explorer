@@ -1,0 +1,43 @@
+server:
+  # 网关端口（本机 8080 已被其他进程占用，改用 9090；user=8081、order=8082 不直接对外）
+  port: 9090
+
+spring:
+  application:
+    name: gateway
+
+  cloud:
+    nacos:
+      discovery:
+        # Nacos 地址：网关靠它把"服务名"解析成实际实例地址
+        server-addr: 192.168.157.129:30048
+
+    gateway:
+      # 关闭"按服务名自动路由"（默认就关）：自动路由不必写规则，
+      # 路径会变成 /服务名/**，教学上先用显式路由把规则写法讲透。
+      discovery:
+        locator:
+          enabled: false
+
+      # ============ 路由规则：网关的核心配置 ============
+      routes:
+        # 路由 1：/api/users/** → 用户服务
+        - id: user-service-route
+          # lb = load balance：从注册中心（Nacos）按服务名找实例并负载均衡
+          uri: lb://user-service
+          predicates:
+            # 匹配条件：请求路径以 /api/users/ 开头
+            - Path=/api/users/**
+          filters:
+            # 转发前去掉路径的第 1 段（/api）：
+            # 客户端请求 /api/users/1 → 实际转发给 user-service 的是 /users/1
+            # （不加会转发 /api/users/1，而服务端只有 /users/1，导致 404）
+            - StripPrefix=1
+
+        # 路由 2：/api/orders/** → 订单服务
+        - id: order-service-route
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=1

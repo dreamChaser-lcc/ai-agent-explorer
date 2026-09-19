@@ -1,0 +1,27 @@
+server:
+  # 用户服务端口（order-service 用 8082，gateway 用 8080，避免冲突）
+  port: 8081
+
+spring:
+  application:
+    # 服务名：注册到 Nacos 后，其他服务靠这个名字找到它
+    name: user-service
+
+  # 配置中心（第 5 站）：启动时把 Nacos 上的 user-service.yaml 拉下来，合并进本地配置
+  config:
+    import:
+      # optional: 前缀 = 该配置在 Nacos 上不存在时也照常启动（不加则启动直接失败）
+      - optional:nacos:user-service.yaml
+
+  cloud:
+    nacos:
+      discovery:
+        # Nacos 服务器地址（K8s 里的 Nacos，经 node2 的 NodePort 暴露）
+        # 注意：Nacos 2.x 客户端还会连接「本端口 + 1000」的 gRPC 端口（31048），
+        #       所以 Nacos 的 Service 需同时映射 30048（HTTP）与 31048（gRPC）
+        server-addr: 192.168.157.129:30048
+      config:
+        # 配置中心的 Nacos 地址（与注册中心是同一个 Nacos）
+        server-addr: 192.168.157.129:30048
+        # Data ID 扩展名：服务名 + .yaml → 读取 Nacos 里名为 user-service.yaml 的配置
+        file-extension: yaml
