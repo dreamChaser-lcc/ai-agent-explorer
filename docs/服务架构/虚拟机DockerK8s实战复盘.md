@@ -982,7 +982,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 
 **待办：**
 
-- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（2026-09-19：tcpSocket → actuator/httpGet → preStop+优雅停机+startupProbe 三篇）→ Sentinel Dashboard 可视化流控 ✅ → 彩蛋实验：Feign 限流×降级联动 ✅（2026-09-19）。**剩余：监控体系（Prometheus/Grafana）、配置中心深化、Nacos StatefulSet+PVC、迁移到真实项目**
+- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（09-19）→ Sentinel Dashboard ✅ → 彩蛋实验（Feign 限流×降级联动）✅ → **⑩ 监控体系（Prometheus + Grafana + common tag）✅（2026-09-19 深夜，见《微服务实战复盘.md》9.13）**。**剩余：配置中心深化、Nacos StatefulSet+PVC、迁移到真实项目**
 - [x] **（微服务延伸）Sentinel Dashboard**：已部署进 K8s（NodePort 30058）+ order-service 接入 + 流控实战（2026-09-19，详见《微服务实战复盘.md》9.11；含"自建镜像：白名单 403 → GitHub Release + 三重校验"的完整踩坑记录）
 - [ ] **Docker Desktop 长期加速**：Settings → Docker Engine 里补 `registry-mirrors`（写死 FROM 只是临时方案）
 - [ ] **（可选）修复 node1 → node2 免密登录**：当前 scp 仍需密码，重新 `ssh-copy-id` 一次
@@ -992,6 +992,8 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 - [ ] **K8s YAML 深化**：~~readinessProbe/livenessProbe~~ ✅（2026-09-19 落地，见微服务文档 9.8 / 9.9）、ConfigMap/Secret（配置解耦）、资源 requests/limits（防止 Pod 挤爆节点）
 - [x] **preStop + 优雅停机 + startupProbe**：零中断"完全体"落地（2026-09-19，详见《微服务实战复盘.md》9.10）
 - [ ] **node2 IP 收敛复核**：确认 Netplan 阶段② 完成、K3s 节点 IP 对齐 `.129`（见 E.10）
+- [ ] **监控进阶（集群侧）**：node-exporter（节点层）+ kube-state-metrics（K8s 层）+ 首条告警——补齐"节点层/K8s 层"盲区（磁盘风暴正是节点层盲区的代价；详见《微服务实战复盘.md》9.14 与待办）
+- [ ] **registries.yaml 修复**：配置内容正确但未生效（改后需**重启 k3s**）——修复后所有镜像拉取自动走 daocloud 加速（免"全名 + retag"流程；详见《微服务实战复盘.md》9.13-E）
 - [x] **node1 磁盘扩容补完**：完整四连落地，根分区 9.8G → 38G（2026-09-19 深夜；09-13 悬案复盘见 P21）
 - [ ] **快照存档**：建议 `监控全链路-0919`（双节点；监控体系 + 扩容后状态）
 - [ ] **Nacos 鉴权企业级配置**：NACOS_AUTH_ENABLE=true 全家桶（默认不鉴权的对照）
