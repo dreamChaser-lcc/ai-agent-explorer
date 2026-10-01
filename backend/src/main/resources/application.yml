@@ -1,6 +1,12 @@
 spring:
   application:
     name: research-agent-backend
+  cloud:
+    nacos:
+      discovery:
+        # 注册中心（第 3 课，2026-09-28）：本地直连走虚拟机 NodePort；
+        # 集群内由 env NACOS_ADDR=nacos-svc:8848 覆盖（与 micro-lab 同款模式）
+        server-addr: ${NACOS_ADDR:192.168.157.129:30048}
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/research_agent}
     username: ${DB_USERNAME:postgres}

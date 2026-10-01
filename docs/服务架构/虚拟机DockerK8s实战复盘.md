@@ -41,7 +41,7 @@
   - [E.10 IP 静态化战役（2026-09-19，根治 NAT 漂移）](#e10-ip-静态化战役2026-09-19根治-nat-漂移)
 - [七、踩坑大全（P1-P21）](#七踩坑大全血泪经验务必先读)
 - [八、关键概念速查](#八关键概念速查脱离会话也能复习)
-- [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-19)
+- [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-26)
 - [十、未完成 / 待办学习项](#十未完成--待办学习项下次从这里续)
 - [十一、推荐学习顺序回顾](#十一推荐学习顺序回顾)
 
@@ -839,6 +839,99 @@ curl -s http://192.168.157.129/api/tasks                             # 404（不
 
 ---
 
+### E.10 IP 静态化战役（2026-09-19，根治 NAT 漂移）
+
+> **2026-09-28 补完记**：本节的"静态化"当时**未彻底根治**——cloud-init 的 DHCP 配置一直并存，周末重启后 DHCP 反扑引发 **IP 冲突**、node1 再次掉线。当日追加"补完战"：找到真根因并落地**最终配方**（B~D 节）。**"固化 IP"的标准姿势以 C 节为准。**
+
+**A. 背景与第一轮改造（2026-09-19）**
+
+两台虚拟机均为 VMware **NAT 模式**，IP 由 DHCP 发放——历史上**多次漂移**引发故障，最严重一次：node1 的 K3s agent 静默掉线（NotReady 半天无人察觉、Pod 被悄悄迁走，"故障被掩盖"）。当日执行**两阶段 Netplan 静态化**（node1 固定 `.128`、node2 目标 `.129`）+ **DHCP 池避让**（挪到 `.150+`）。遗留：node2 的收敛存疑（K8s 一度仍显示 `.130`）。
+
+**B. 复发与真根因（2026-09-28）**
+
+- **症状**：node1 `NotReady`；`k3s-agent` 卡在 `activating (start)`、每 15 秒循环报
+  `Failed to validate connection to cluster ... failed to get CA certs: Get "https://127.0.0.1:6444/cacerts": connection reset by peer`；`ctr` 报 socket 不存在；**node1 连 ping node2 的 `.129` 都不通**（Destination Host Unreachable）。
+- **证据链**：
+  1. node2 上 `ip -4 addr` 显示**双地址**：`.129`（静态 primary）+ **`.128`（dynamic secondary）**——而 `.128` 是 node1 的地址 → **两台 IP 撞车**（冲突）；
+  2. **根因文件**：`/etc/netplan/50-cloud-init.yaml`（cloud-init 生成）里 `dhcp4: true`，与静态配置文件**并存** → netplan 合并两份 = 静态 + DHCP 双开 → 重启后 DHCP 发牌，把 node1 的 `.128` 发给了 node2；
+  3. **雪上加霜**：node1 的 agent 缓存了历史地址（`k3s-agent-load-balancer.json` 里的 `.130`——更早某次 DHCP 发给 node2 的），重启后优先敲这扇死门。
+- **为什么之前没炸**：DHCP 发牌有随机性——09-19 ~ 09-26 数次重启恰好没撞车，这次撞上了（"时差攻击"）。**只要 DHCP 还开着，它就是颗定时炸弹。**
+
+**C. 彻底修复配方（★ 固定 IP 的标准姿势，2026-09-28 落地）**
+
+三件事缺一不可：**① 一份权威静态配置；② 禁用 cloud-init 的网络接管；③ 移走 cloud-init 的 netplan 文件。**
+
+```bash
+# 以 node1（静态 .128）为例；node2 把地址换成 192.168.157.129/24 即可
+
+# ① 禁用 cloud-init 的网络接管（写它的"开关文件"，官方姿势）
+sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg <<'EOF'
+network: {config: disabled}
+EOF
+
+# ② 写"权威静态配置"（每台一份；00- 序号先于 cloud-init 的 50- 加载）
+sudo tee /etc/netplan/00-installer-config.yaml <<'EOF'
+network:
+  version: 2
+  ethernets:
+    ens33:
+      dhcp4: false
+      addresses:
+        - 192.168.157.128/24
+      routes:
+        - to: default
+          via: 192.168.157.2
+      nameservers:
+        addresses: [223.5.5.5, 114.114.114.114]
+EOF
+
+# ③ 移走 cloud-init 的 DHCP 文件（改名备份，不删除）
+sudo mv /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.disabled
+
+# ④ 应用（⚠️ SSH 可能闪断 1~2 秒，重连即可）
+sudo netplan apply
+
+# ⑤ 验收：只剩 1 个地址、无 dynamic 字样；且与对端互通
+ip -4 addr show ens33 | grep inet
+ping -c 2 <对端IP>
+```
+
+**k3s 侧配套（agent 节点）**：
+
+```bash
+# 清 agent 的过期地址缓存（含历史 .130）
+sudo mv /var/lib/rancher/k3s/agent/etc/k3s-agent-load-balancer.json \
+        /var/lib/rancher/k3s/agent/etc/k3s-agent-load-balancer.json.bak
+
+# 重启 agent → 验收
+sudo systemctl restart k3s-agent
+ls -l /run/k3s/containerd/containerd.sock     # socket 应出现
+# 在 server 节点上：
+kubectl get nodes                              # 应回到双 Ready
+```
+
+**D. 验收与自检**
+
+| 判据 | 预期 |
+|------|------|
+| `ip -4 addr`（两台） | 各只有一个地址，**无 `dynamic` / `secondary`** |
+| 互 ping | 双向通 |
+| `kubectl get nodes` | 双 Ready |
+| **终极判据** | **两台重启后 IP 不变、集群自动恢复**——静态化的真正验收 |
+
+> **修复实录（2026-09-28）**：node2 先行（摘除多余 `.128` → 双向互通恢复 ✅）；node1 按同配方执行（静态化 + 清 agent 缓存 + 重启 agent）。
+
+**E. 知识卡片**
+
+- **netplan 会合并 `/etc/netplan/` 下的所有 yaml**——"静态文件 + `50-cloud-init.yaml`（dhcp4: true）"并存 = 一个网卡挂两个地址（静态 + DHCP），**不是覆盖关系**；
+- **cloud-init 生成的文件自带官方警告**："改动不会在重启后保留"——直接改它无效，正确姿势 = 禁用（`99-disable-network-config.cfg`）+ 独立配置文件；
+- **IP 冲突的排查心法**：症状很"玄学"（明明有主机却 Host Unreachable）——先 `ip -4 addr` 看**双方是否撞车**；
+- **k3s agent 的地址缓存**（`k3s-agent-load-balancer.json`）会记住历史 server 地址——server 换过 IP 后必须清它。
+
+**F. 回滚保险**：所有"移走"均为改名备份（`.disabled` / `.bak`）——改错时恢复原名 + `netplan apply` 即可回滚。
+
+---
+
 ## 七、踩坑大全（血泪经验，务必先读）
 
 | # | 坑 | 现象 | 根因 | 解法 |
@@ -864,6 +957,7 @@ curl -s http://192.168.157.129/api/tasks                             # 404（不
 | P19 | 节点静默掉线（IP 漂移致 agent 失联） | `ctr`/`kubectl` 报 socket 不存在；`kubectl get nodes` 变 NotReady；Pod 被悄悄迁到另一台（服务无感，故障被掩盖） | NAT DHCP 漂移 → agent 里写死的 `K3S_URL` 失配 → k3s-agent 起不来 | 根治：Netplan 静态 IP（两阶段法）+ DHCP 池避让，见 E.10；日常：开工先看 `get nodes` |
 | P20 | 同名旧 tar 冒充新镜像 | 新 Pod 探针 404 永不就绪（其他服务却正常）；两台 digest 一致但为旧值 | 多行粘贴漏跑某条 `docker save` → scp 传的还是旧文件（同名不可辨） | 单点重做 build/save 并核对 tar 时间戳；import 后核对 digest 变化；进阶用不可变 tag（详见《微服务实战复盘.md》9.9） |
 | P21 | 小盘跑 K8s → DiskPressure 驱逐风暴 | node1 9.8G 盘用至 87% → kubelet 驱逐成片 Pod（order 8 个、sentinel 30+ 个循环驱逐、三服务全下线）；随后新 Pod 拉不到镜像（磁盘高压下 Image GC 清掉了"无容器使用"的镜像） | **扩容四连补完**（growpart→pvresize→lvextend→resize2fs，9.8G→38G）；**镜像 tar 用完即删**；K8s 节点盘建议 ≥20G；认知：kubelet 保命双机制 = Eviction + Image GC（详见《微服务实战复盘.md》9.13-F） |
+| P22 | **IP 静态化未根治 → DHCP 反扑引发 IP 冲突**（2026-09-28） | node1 NotReady；k3s-agent 卡 `activating`、每 15s 循环 `127.0.0.1:6444 connection reset`；`ctr` 报 socket 不存在；连对端 `.129` 都 ping 不通 | cloud-init 的 `50-cloud-init.yaml`（dhcp4: true）与静态配置**并存** → 重启后 DHCP 把 node1 的 `.128` 发给了 node2 → **两台 IP 撞车**（另：agent 缓存里还有历史地址 `.130` 干扰） | **彻底配方**：禁 cloud-init 网络接管（`99-disable-network-config.cfg`）+ 移走 50- 文件 + 每台一份静态配置 + 清 agent 地址缓存 + restart agent——全录见 **E.10**（C/D 节） |
 
 ### LVM 磁盘扩容三连（P6/P7 解法，企业高频操作）
 
@@ -951,7 +1045,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 
 ---
 
-## 九、当前环境状态清单（截至 2026-09-19）
+## 九、当前环境状态清单（截至 2026-09-26）
 
 | 项 | 状态 |
 |----|------|
@@ -959,13 +1053,14 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 | node1（lccserver） | Docker 全家桶（Nacos/MySQL/Nginx/旧 research-agent 容器）+ **K3s agent**（2026-09-13 加入）；磁盘已扩容（根分区 38G） |
 | node2（lccserver-node2） | Docker + K3s **server**（v1.36.4+k3s1） |
 | 集群形态 | **双节点**：node2 = control-plane，node1 = agent，均 Ready |
-| 静态 IP（改造中） | node1 已固定 `.128` ✅；node2 目标 `.129`（2026-09-19 时 K8s 仍显示 `.130`，待复核收敛）；DHCP 池已挪 `.150+`（见 E.10） |
-| research-agent | **1.1** Deployment（2 副本，podAntiAffinity 分散两节点）+ Service NodePort 30081（两台节点 IP 均可访问） |
-| 镜像分布 | research-agent 1.1 + micro-lab 三镜像（user-service / order-service / gateway）均在两台节点的 k8s.io 命名空间 |
+| 静态 IP（✅ 2026-09-28 彻底落地） | 双节点 Netplan 静态化**补完**：node1 = `.128`、node2 = `.129`（禁用 cloud-init 网络接管，杜绝重启漂移）；期间完整演练"DHCP 反扑 → IP 冲突 → node1 掉线 → 修复"战役（见 E.10 / 踩坑 P22） |
+| research-agent | **1.3** Deployment（2026-09-28 接入集群内 PostgreSQL + Redis：Flyway 迁移建表、profile=pg；双副本 + 软反亲和 + resources）+ Service NodePort 30081——详见《backend接入集群实战复盘.md》 |
+| 数据层（集群内） | **PostgreSQL 16 + Redis 7**（2026-09-26 入集群）：PVC（local-path）持久化 + Secret 密码 + ClusterIP Service（postgres-svc:5432 / redis-svc:6379）；"杀 Pod 数据存活"验证通过——详见同目录《backend接入集群实战复盘.md》 |
+| 镜像分布 | research-agent **1.3** + micro-lab 三镜像（user-service / order-service / gateway）+ postgres / redis（daocloud 全名）均在两台节点的 k8s.io 命名空间 |
 | node2 磁盘/内存 | 根分区 38G（已扩容），内存 6G |
 | 代码改动 | `ResearchAgentApplication.java` main 加了 “Starting version 1.1” 标记日志 |
 | 后端 Dockerfile | `backend/Dockerfile`（多阶段 + 加速源 + 非 root）已就绪 |
-| 快照 | node2 “K3s-1.1稳定版”、node1 “扩容完成 / Docker就绪”（VMware 快照回滚点） |
+| 快照 | **新增（2026-09-28）**：双节点 `backend上线-0928`（封存"IP 静态化补完 + PG/Redis 数据层 + backend 1.3 接入"）；历史：node2 “K3s-1.1稳定版”、node1 “扩容完成 / Docker就绪” |
 
 ---
 
@@ -983,6 +1078,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 **待办：**
 
 - [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（09-19）→ Sentinel Dashboard ✅ → 彩蛋实验（Feign 限流×降级联动）✅ → **⑩ 监控体系（Prometheus + Grafana + common tag）✅（2026-09-19 深夜，见《微服务实战复盘.md》9.13）**。**剩余：配置中心深化、Nacos StatefulSet+PVC、迁移到真实项目**
+- [ ] **真实项目接入集群（进行中，2026-09-26 起）**：backend（research-agent）走"生产式"路线（数据/服务全在集群）——第 1 课 ✅ 数据层进集群（PG 16 + Redis 7：PVC 持久化 + Secret + 杀 Pod 数据存活）→ **第 2 课 ✅ backend 接入**（1.3：Flyway 建表 9 张 + 双副本 Running + 接口 200；途中踩坑 B2/B3 与 node1 掉线大营救——见 E.10/P22）→ **第 3 课 ✅ Nacos 接入**（1.4：注册中心 2 实例 healthy + 动态实验 2→1→2；版本线 Cloud 2025.0 / Alibaba 2025.0.0.0）→ 后续：网关路由（gateway 接 Nacos 找 backend）。**详细实战记录见同目录《backend接入集群实战复盘.md》**
 - [x] **（微服务延伸）Sentinel Dashboard**：已部署进 K8s（NodePort 30058）+ order-service 接入 + 流控实战（2026-09-19，详见《微服务实战复盘.md》9.11；含"自建镜像：白名单 403 → GitHub Release + 三重校验"的完整踩坑记录）
 - [ ] **Docker Desktop 长期加速**：Settings → Docker Engine 里补 `registry-mirrors`（写死 FROM 只是临时方案）
 - [ ] **（可选）修复 node1 → node2 免密登录**：当前 scp 仍需密码，重新 `ssh-copy-id` 一次
@@ -991,11 +1087,11 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 - [ ] **给前端打镜像**：本项目 frontend（Next.js）可复用同一套多阶段 + Dockerfile 思路
 - [ ] **K8s YAML 深化**：~~readinessProbe/livenessProbe~~ ✅（2026-09-19 落地，见微服务文档 9.8 / 9.9）、ConfigMap/Secret（配置解耦）、资源 requests/limits（防止 Pod 挤爆节点）
 - [x] **preStop + 优雅停机 + startupProbe**：零中断"完全体"落地（2026-09-19，详见《微服务实战复盘.md》9.10）
-- [ ] **node2 IP 收敛复核**：确认 Netplan 阶段② 完成、K3s 节点 IP 对齐 `.129`（见 E.10）
+- [x] **node2 IP 收敛复核**：✅ 2026-09-28 完成并**升级为彻底方案**——发现"静态化未根治"（cloud-init DHCP 并存 → IP 冲突复发），执行最终配方（禁 cloud-init + 独立静态配置 + 清 agent 缓存），双节点 IP 固化；建议择机做"终极验收"：重启两台确认不漂（见 E.10 C/D 节）
 - [ ] **监控进阶（集群侧）**：node-exporter（节点层）+ kube-state-metrics（K8s 层）+ 首条告警——补齐"节点层/K8s 层"盲区（磁盘风暴正是节点层盲区的代价；详见《微服务实战复盘.md》9.14 与待办）
 - [ ] **registries.yaml 修复**：配置内容正确但未生效（改后需**重启 k3s**）——修复后所有镜像拉取自动走 daocloud 加速（免"全名 + retag"流程；详见《微服务实战复盘.md》9.13-E）
 - [x] **node1 磁盘扩容补完**：完整四连落地，根分区 9.8G → 38G（2026-09-19 深夜；09-13 悬案复盘见 P21）
-- [ ] **快照存档**：建议 `监控全链路-0919`（双节点；监控体系 + 扩容后状态）
+- [x] **快照存档**：✅ 2026-09-28 拍摄双节点 `backend上线-0928`（覆盖：IP 静态化补完 + 数据层 + backend 1.3 接入 + 监控全链路——即原"监控全链路-0919"建议的升级版）
 - [ ] **Nacos 鉴权企业级配置**：NACOS_AUTH_ENABLE=true 全家桶（默认不鉴权的对照）
 
 ---

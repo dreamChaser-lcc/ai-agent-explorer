@@ -55,3 +55,6 @@ data/
 tmp/
 temp/
 *.tmp
+
+# 过滤打包镜像包
+*.tar

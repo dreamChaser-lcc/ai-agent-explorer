@@ -2,6 +2,7 @@
 
 > 定位：这是《微服务实战复盘.md》的**配置专题**复习材料——把整个学习过程中出现过的所有配置文件（yaml / Dockerfile / pom.xml / 配置中心条目）集中到一处，讲清它们的**位置、归属、内容、生效方式与区别**。
 > 阅读方式：先看第一章建立"分层地图"，再按需深挖对应章节。文档中所有配置文件**保留原始注释**，正文为新增讲解。
+> **深化配套**：《SpringBoot配置读取方式全解.md》——本册回答"**文件在哪、怎么生效**"，那册回答"**值怎么流动**"（书写来源 6 种 / 读取方式 4 种 / 本地·K8s·Nacos 三场景横向对比）。
 
 ---
 
@@ -132,6 +133,8 @@ kubectl set env deploy/order-service MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE="
 # 定向查单个属性的"审查现场"：列出每层来源及各自的值
 kubectl exec deploy/order-service -- wget -qO- "localhost:8082/actuator/env/spring.cloud.nacos.discovery.server-addr"
 ```
+
+> 📎 **本组补充的系统化扩展版**：见同目录《SpringBoot配置读取方式全解.md》——上面的"优先级栈 / 推导法 / 覆盖过程"在那册里展开为完整体系：**书写来源全谱（6 种）**、**读取方式全谱（Environment / @Value / @ConfigurationProperties 等 4 种，含本项目真实代码样本）**，以及同一个键在**本地开发 / K8s 部署 / Nacos** 三种场景的书写对照与"改值生效决策树"。
 
 ### 1.3 一次完整交付的链路（配置文件各就各位）
 
