@@ -22,3 +22,7 @@
 - 两节点 IP（2026-09-19 起 Netplan 静态化）：node1=192.168.157.128、node2=192.168.157.129（node2 待最终复核）；VMware DHCP 池已挪 `.150+`。
 - K3s 镜像搬运约定：两台节点都要导入、命名空间 `k8s.io`；**同名 tag 覆盖有"旧 tar 冒充新镜像"风险**（见微服务复盘 9.9）——save 后核对 tar 时间戳、import 后核对 digest 变化。
 - 顺序铁律：改代码 → mvn package → docker build → save → scp → ctr import → rollout restart（缺一环 Pod 跑旧代码）。
+
+## 流程约定
+
+- [每课收尾流程（git 提交 + 总结）](feedback_lesson_closure.md) — 每课通关时必须**主动**提醒 git 提交并做课程总结（2026-10-03 用户约定；顺序：验证通关 → 落档 → git 提交 → 可选 tag/推送）
