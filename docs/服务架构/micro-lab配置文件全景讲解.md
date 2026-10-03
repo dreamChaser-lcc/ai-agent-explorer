@@ -82,10 +82,12 @@ spring.cloud.nacos.discovery.server-addr
 
 （官方文档的规则是"连字符删除"，即 `...SERVERADDR` 也合法；绑定匹配时会先把两边"标准化"——转小写、去分隔符——再比对，所以"换下划线"同样 100% 有效，且可读性更好。）
 
+> 📌 **现状注（2026-10-03 起）**：下表前两行是"标准键名式"的**机制教学样本**；micro-lab 与 backend 现已**全部统一为"占位符式"**（yml 里 `${NACOS_ADDR:…}` 显式引用、清单 env 名为 `NACOS_ADDR`）。relaxed binding 仍是通用底层机制（任何环境变量都能这样覆盖任何配置键），只是不再是本项目的首选书写风格。
+
 | yml 里的键 | 对应环境变量 | 用在哪 |
 |-----------|-------------|--------|
-| `spring.cloud.nacos.discovery.server-addr` | `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR` | micro-lab.yaml（三服务） |
-| `spring.cloud.nacos.config.server-addr` | `SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR` | micro-lab.yaml（user-service） |
+| `spring.cloud.nacos.discovery.server-addr` | `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR` | **（历史）** micro-lab.yaml 三服务——2026-10-03 已改 `NACOS_ADDR` 占位符式 |
+| `spring.cloud.nacos.config.server-addr` | `SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR` | **（历史）** micro-lab.yaml user-service——2026-10-03 已并入 `NACOS_ADDR` |
 | `spring.cloud.sentinel.transport.dashboard` | `SPRING_CLOUD_SENTINEL_TRANSPORT_DASHBOARD` | set env 注入 Dashboard 地址 |
 | `management.endpoints.web.exposure.include` | `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE` | set env 放开端点（监控篇） |
 | `management.endpoint.health.probes.enabled` | `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED` | micro-lab.yaml v3（探针篇） |
@@ -539,7 +541,7 @@ spec:
 4. **gRPC 端口 +1000 铁律**（核心坑）：Nacos 2.x 客户端是"两条腿"通信（HTTP 8848 + gRPC 9848）。客户端算 gRPC 端口的规则是「配置端口 + 1000」——配置 `30048` 就会去连 `31048`。**最初误配成 30049，导致 Windows 本地服务注册时 gRPC 超时**，最终修正为 31048；
 5. `MODE=standalone` 是 Nacos 应用层的"单机模式"，与 K8s 无关；`cluster` 模式有硬性要求：3 节点起 + 外置 MySQL。代价：数据存 Pod 内嵌存储，**Pod 一重建数据全丢**（待办：换 StatefulSet + PVC）。
 
-### 3.2 micro-lab.yaml —— 微服务部署清单（第 8 站，改了 4 版）
+### 3.2 micro-lab.yaml —— 微服务部署清单（第 8 站，改了 6 版）
 
 **路径**：节点 `~/k8s-lab/micro-lab.yaml`
 **对象**：3 个 Deployment（user / order / gateway） + 3 个 Service
@@ -681,7 +683,7 @@ EOF
 
 | 点 | 说明 |
 |----|------|
-| 环境变量覆盖 yml | `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR` 来自 **relaxed binding**：`spring.cloud.nacos.discovery.server-addr` 中的 `.` 和 `-` 全换 `_`、全大写。环境变量优先级高于 jar 内 yml，实现"同一镜像、不同环境连不同 Nacos" |
+| 环境变量覆盖 yml | `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR` 来自 **relaxed binding**：`spring.cloud.nacos.discovery.server-addr` 中的 `.` 和 `-` 全换 `_`、全大写。环境变量优先级高于 jar 内 yml，实现"同一镜像、不同环境连不同 Nacos"（2026-10-03 注：micro-lab 三服务与 backend 现已统一为占位符式 `NACOS_ADDR`；relaxed binding 作为机制认知保留） |
 | 只有网关对外 | user/order 是 `ClusterIP`（集群内部），gateway 是 `NodePort`（唯一入口，30090）——安全原则"只暴露网关" |
 | JAVA_TOOL_OPTIONS | 限制 JVM 堆内存，防止小集群被 Java 吃满 |
 | nodePort 30090 | 就是"30090 端口"的唯一定义处；不写则 K8s 从 30000~32767 随机分配，重建会变号 |
@@ -806,7 +808,8 @@ spec:
 | v2 | 09-19 | 加 tcpSocket readiness + liveness |
 | v3 | 09-19 | 探针改 httpGet + actuator 端点 + `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED` |
 | v4 | 09-19 | + startupProbe、liveness 敏感模式、+ preStop、+ `SERVER_SHUTDOWN=graceful`、+ `terminationGracePeriodSeconds: 30` |
-| **v5（待办）** | — | 把 3 笔 `kubectl set env` 漂移写回文件固化（见第七章） |
+| **v5（✅ 2026-10-01）** | 10-01 | 4 笔 `kubectl set env` 漂移写回文件固化（见第七章）——apply 后**零滚动**归位；order-service dashboard 旧值（30058）核账时更新为 `sentinel-dashboard-svc:8858` |
+| **v6（✅ 2026-10-03）** | 10-03 | **env 双风格统一（清账日 2.0）**：user/order 的 `server-addr` 占位符化（`${NACOS_ADDR:…}`）——清单环境变量由 `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR` ×2 + `SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR` ×1 **归并为单个 `NACOS_ADDR`**；镜像 user/order → **1.1.0**（详见《微服务实战复盘.md》7.3 演进记录 2） |
 
 ### 3.3 prometheus.yaml —— 监控抓取配置（含参考骨架）
 
@@ -897,9 +900,10 @@ spec:
 
 ```bash
 kubectl set env deployment/order-service SPRING_CLOUD_SENTINEL_TRANSPORT_DASHBOARD=192.168.157.129:30058
+#   ※ 该值后续又升级为 sentinel-dashboard-svc:8858（集群内 Service 名）
 ```
 
-> 这也是一笔"漂移账"（与 micro-lab.yaml 不一致，待 v5 固化）。
+> 这也是一笔"漂移账"——**✅ 2026-10-01 v5 已固化**（写回 micro-lab.yaml，现值 `sentinel-dashboard-svc:8858`）。
 
 ---
 
@@ -918,8 +922,21 @@ mirrors:
       - https://docker.m.daocloud.io
 ```
 
-**最大的坑**：**改完必须重启 k3s 才生效**（复盘 §9.13-E：配置虽对但没重启，`ctr pull` 依旧直连 docker.io 报 `connect: connection refused`）。
-**临时替代方案**：点名加速源全名 + retag 回标准名：
+**真相揭示（2026-10-01 清账日收官）**：本条曾名为"最大的坑"——旧记录称"配置对但没重启，所以 `ctr pull` 仍直连被拒"（复盘 §9.13-E）。**收官日破案**，真相分三层：
+
+1. **配置链路一直是通的**——k3s 每次启动会把 `registries.yaml` 渲染成新版 containerd 的"改道牌"：`/var/lib/rancher/k3s/agent/etc/containerd/certs.d/docker.io/hosts.toml`（`config.toml` 的 `config_path` 指向该目录）。**改配置后重启 k3s 仍然是必要动作**（为了重新渲染），但……
+2. **`ctr` 命令不走 CRI 的 mirror 配置**——它是底层直连客户端，**任何时候都直连 registry**（重启与否都一样）——"重启就能让 ctr 走 mirror"的推论**是误判**；真因是**测试工具与消费路径不匹配**；
+3. **正确验证姿势（金标准）**：让 **kubelet（走 CRI）拉"裸名"镜像**：
+
+```bash
+kubectl run t --image=docker.io/library/hello-world:latest --restart=Never
+```
+
+成功即 mirror 生效；想用 ctr 验证则要显式"导航"：`sudo k3s ctr images pull --hosts-dir /var/lib/rancher/k3s/agent/etc/containerd/certs.d <镜像>`。
+
+**2026-10-01 双节点实测**：裸名 `docker.io/library/hello-world` **577ms 拉取成功**（image size 15077 bytes；同节点 `ctr` 直连仍被拒——完美对照组）——镜像加速线正式收官 ✓
+
+**临时替代方案**（对 ctr 等不走 mirror 的路径依然有效）：点名加速源全名 + retag 回标准名：
 
 ```bash
 sudo k3s ctr -n k8s.io images pull docker.m.daocloud.io/prom/prometheus:v2.54.1
@@ -943,8 +960,10 @@ sudo k3s ctr -n k8s.io images tag docker.m.daocloud.io/prom/prometheus:v2.54.1 d
 
 ```yaml
 microlab:
-  welcome-message: 欢迎使用 micro-lab 用户服务（来自 Nacos 配置中心）
+  welcome-message: "欢迎回来！我是 10-01 重建的欢迎语——杀 Pod 也带不走我（下一幕见）"
 ```
+
+> 📌 该数据命运备注：**曾因 Nacos 无持久化而丢失**（重启 5 次后蒸发，接口退回代码兜底值）；2026-10-01 升级 PVC 持久化后**重建**——"杀 Pod 存活"验证通过（详见《虚拟机DockerK8s实战复盘.md》状态清单 Nacos 行）。
 
 > ⚠️ 它**不是磁盘文件**，只存在于 Nacos 控制台（配置管理 → 配置列表）。工程里找不到它是正常的。
 
@@ -974,16 +993,16 @@ curl.exe http://localhost:8081/users/config/welcome
 
 ## 七、漂移账：kubectl set env 注入的配置
 
-以下配置**存在于运行中的集群里，但没写进 micro-lab.yaml**（v5 待办要固化）。学习时注意：它们也是"配置"的一部分，只是形态是集群里的环境变量。
+以下配置**曾存在于运行中的集群里、但没写进 micro-lab.yaml**（"漂移"形态）——**✅ 2026-10-01 已全部写回文件固化（见 3.2 版本演化表 v5）**。留档学习：它们也是"配置"的一部分，只是当时的形态是集群里的环境变量。
 
 | 注入项 | 目标服务 | 用途 | 来源 |
 |--------|---------|------|------|
 | `MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always` | user-service | 打开 `/actuator/health` 明细（components 全公开） | §9.9 实验一 |
 | `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,metrics,prometheus` | 三服务 | 暴露 Prometheus 抓取端点 | §9.13-A |
 | `MANAGEMENT_METRICS_TAGS_APPLICATION=<服务名>` | 三服务 | 所有指标统一带 `application=xxx` 标签（Grafana 按应用过滤的前提） | §9.13-A |
-| `SPRING_CLOUD_SENTINEL_TRANSPORT_DASHBOARD=192.168.157.129:30058` | order-service | 接入 Sentinel 控制台 | §9.11-B |
+| `SPRING_CLOUD_SENTINEL_TRANSPORT_DASHBOARD`（**核账发现：实际值已升级为 `sentinel-dashboard-svc:8858`**，旧值 30058 过时） | order-service | 接入 Sentinel 控制台 | §9.11-B |
 
-**为什么这是"账"**：`set env` 是命令式操作，与声明式的 yml 文件产生漂移——**下次 `kubectl apply -f micro-lab.yaml` 不会带这些变量**（apply 只调 yml 里声明过的字段），重建后配置就丢了。所以生产上要"写回文件"（声明式）或用 ConfigMap 管理。
+**为什么这是"账"**：`set env` 是命令式操作，与声明式的 yml 文件产生漂移——**下次 `kubectl apply -f micro-lab.yaml` 不会带这些变量**（apply 只调 yml 里声明过的字段），重建后配置就丢了。所以生产上要"写回文件"（声明式）或用 ConfigMap 管理。**（本账目 2026-10-01 已结清：4 笔写回 micro-lab.yaml v5，apply 后零滚动归位——"对账"还当场发现 dashboard 值已演进而文档滞后。）**
 
 ---
 
@@ -1364,13 +1383,13 @@ curl.exe http://192.168.157.129:30090/api/orders/1001
    目标：能解释"为什么本地 yml 写 192.168.157.129:30048，K8s 里却连 nacos-svc:8848"。
 4. **第四遍：看懂 nacos.yaml**（第四章 4.1）
    目标：三层端口 + gRPC +1000 铁律能背下来。
-5. **第五遍：micro-lab.yaml 的四个版本**（第四章 4.2）
-   目标：理解每一版解决的"什么故障"——这是一条"从能跑到跑得稳"的演进线：
-   `能部署（v1）→ 发布不中断（v2/v3 入口侧）→ 退场不丢请求（v4 出口侧）→ 慢启动不误杀（v4 启动期）`。
+5. **第五遍：micro-lab.yaml 的六个版本**（第四章 4.2）
+   目标：理解每一版解决的"什么故障"——这是一条"从能跑到跑得稳、再到账实归位、最后风格统一"的演进线：
+   `能部署（v1）→ 发布不中断（v2/v3 入口侧）→ 退场不丢请求（v4 出口侧）→ 慢启动不误杀（v4 启动期）→ 漂移归位（v5）→ env 风格统一（v6）`。
 6. **第六遍：配置中心与动态刷新**（第六章）
    目标：能讲清"本地 yml / 环境变量 / Nacos dataId"三者的分工。
 7. **收尾：认领漂移账**（第七章）
-   目标：理解声明式 vs 命令式的差异，知道为什么要把 set env 写回文件（v5 待办）。
+   目标：理解声明式 vs 命令式的差异，知道为什么要把 set env 写回文件——**✅ 2026-10-01 已实操完成（v5，零滚动归位）**。
 
 > 学习心法：**配置的每一个"文件"背后，都对应一个"谁在什么时候读它"**。搞清楚"读者"和"生效时机"，这一堆 yaml 就不会再乱。
 

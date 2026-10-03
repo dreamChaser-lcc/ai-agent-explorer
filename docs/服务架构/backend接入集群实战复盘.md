@@ -12,8 +12,10 @@
 - [二、第 1 课：数据层进集群（PG + Redis）](#二第-1-课数据层进集群pg--redis)
 - [三、第 2 课：backend 进集群（2026-09-28 完成）](#三第-2-课backend-进集群2026-09-28-完成)
 - [四、第 3 课：Nacos 接入（2026-09-28 完成）](#四第-3-课nacos-接入2026-09-28-完成)
-- [五、踩坑记录（B 编号）](#五踩坑记录b-编号)
-- [六、进度与待办](#六进度与待办)
+- [五、第 4 课：gateway 路由到 backend（2026-10-01 完成）](#五第-4-课gateway-路由到-backend2026-10-01-完成)
+- [六、第 5 课：配置中心接入（2026-10-03 完成）](#六第-5-课配置中心接入2026-10-03-完成)
+- [七、踩坑记录（B 编号）](#七踩坑记录b-编号)
+- [八、进度与待办](#八进度与待办)
 
 ---
 
@@ -46,9 +48,11 @@
 
 ```text
 第 1 课  数据层进集群（PG + Redis）                        ✅ 2026-09-26
-第 2 课  backend 进集群（新镜像 + PG env + Flyway 建表）    ⏳ 下一课
-第 3 课  Nacos 接入（配置中心先行；注册中心待消费方）         ⏸
-第 4 课  更远：配置中心深化 / 微服务化                       ⏸
+第 2 课  backend 进集群（新镜像 + PG env + Flyway 建表）    ✅ 2026-09-28
+第 3 课  Nacos 接入（注册中心）                             ✅ 2026-09-28
+第 4 课  gateway 路由到 backend（真实项目微服务化第一步）    ✅ 2026-10-01
+第 5 课  配置中心接入（Nacos Server 升级 3.0.3，双年代客户端同台） ✅ 2026-10-03
+第 6 课+ 更远：Sentinel 接入 / 监控进阶 / 鉴权与集群模式 / 挂账升级… ⏸
 ```
 
 ---
@@ -395,11 +399,274 @@ for i in 1 2 3; do curl -s ".../instance/list?serviceName=research-agent-backend
 ### 4.6 小结与下一步
 
 - 单体注册本身不改变架构（"没有消费方"的局限仍在）——它的价值是：**将来网关接入时即刻可用**（按服务名路由 + 负载均衡）；
-- 已埋好的伏笔：micro-lab 的 **gateway** 接进 Nacos 后，即可路由到 `research-agent-backend`——"真实项目微服务化"的第一步（改天开工）。
+- 已埋好的伏笔：micro-lab 的 **gateway** 接进 Nacos 后，即可路由到 `research-agent-backend`——"真实项目微服务化"的第一步。**✅ 已于 2026-10-01 兑现 → 见第五章第 4 课。**
 
 ---
 
-## 五、踩坑记录（B 编号）
+## 五、第 4 课：gateway 路由到 backend（2026-10-01 完成）
+
+### 5.1 目标：让 micro-lab 网关成为真实项目的入口
+
+**目标链路**：
+
+```text
+浏览器 / curl
+    ↓ http://192.168.157.129:30090        （gateway NodePort，集群外唯一入口）
+  gateway（Spring Cloud Gateway，按服务名 lb:// 解析）
+    ↓ 查 Nacos："research-agent-backend 的实例在哪？"
+  backend Pod ×2（两节点各一，由网关负载均衡）
+    ↓
+  postgres-svc / redis-svc
+```
+
+**意义**：4.6 伏笔兑现——**"真实项目微服务化"第一步**。单体从"直接对外（NodePort 30081）"升级为"经网关统一入口"：服务名解析、负载均衡交给网关 + Nacos；将来鉴权、限流、灰度也在网关层发生。
+
+### 5.2 gateway 配置改造（`micro-lab/gateway/application.yml`）
+
+**① 新增路由 3**：
+
+```yaml
+- id: research-agent-route
+  uri: lb://research-agent-backend
+  predicates:
+    - Path=/api/tasks/**,/api/health
+  # ★ 不加 StripPrefix（判据见下）
+```
+
+**② Nacos 地址升级为 L2 占位符**（与 backend 风格统一）：
+
+```yaml
+server-addr: ${NACOS_ADDR:192.168.157.129:30048}
+```
+
+#### ★ 核心教学点 1：StripPrefix 增删的判断法
+
+**判据 = "目标服务实际的路径长什么样"，而不是网关的习惯**：
+
+| | micro-lab 服务（user/order） | backend（research-agent） |
+|---|---|---|
+| 客户端请求 | `/api/users/1` | `/api/tasks` |
+| 目标服务实际路径 | `/users/1`（**不带** /api） | `/api/tasks`（**自带** /api） |
+| 网关动作 | `StripPrefix=1`：剥掉第 1 段 | **原样转发**（不加 filter） |
+
+#### ★ 核心教学点 2：两套 env 风格的"汇合现场"
+
+本次把 gateway 从"标准键名式"升到"占位符式"——当时形成两套风格并存的过渡态；**该过渡态已于 2026-10-03 清账日结束**（gateway / backend / user / order **全部统一为占位符式**）：
+
+| | 标准键名式（历史形态，保留作教学对照） | 占位符式（**现状：四者全用**） |
+|---|---|---|
+| yml 写法 | `server-addr: 192.168.157.129:30048`（写死） | `server-addr: ${NACOS_ADDR:192.168.157.129:30048}` |
+| env 名 | `SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR`（必须可推导） | `NACOS_ADDR`（自定义，两边对齐即可） |
+| 不注入 env 时 | 用写死值 | 用冒号后的默认值 |
+
+**★ 配套铁律（安全知识）**：yml 占位符与清单 env 名**必须成对升级**，顺序应为"**先升 yml（打包上线）→ 再升清单 env 名**"。若反过来（清单先改 `NACOS_ADDR` 而 yml 未升）会**静默降级**——没人接住新变量名、退回写死 IP，集群内碰巧还能通（NodePort 从集群内可达），表面正常、机制变脏。这类错误**不报错**，是"名字写错=静默不生效"的又一变种。
+
+> **★ 精确边界（2026-10-03 清账日补充）**：铁律的**真正含义**是"不要让任何 Pod 处于 env 名与 yml 不配套的**稳态**"——因此"**镜像 + 清单同批交付**"（一次 apply）**同样安全**：滚动混合期里旧 Pod（旧 env+旧 yml）与新 Pod（新 env+新 yml）**各自自洽**。铁律防的是"清单单方面先改、而镜像没跟上"的稳态故障，而非"必须分两轮"。**理解原理 > 背口诀**。
+
+### 5.3 交付链（完整五步演练）
+
+```powershell
+# ---- Windows ----
+mvn clean package -DskipTests -pl gateway -am     # -pl：只构建 gateway 模块；-am：连带其依赖
+docker build -t gateway:1.1.0 gateway              # 新 tag（与集群里的 1.0.0 区分，杜绝旧 tar 冒充）
+docker save gateway:1.1.0 -o gateway-1.1.0.tar
+scp gateway-1.1.0.tar lcc@192.168.157.128:/tmp/    # 惯例：中转目录 /tmp（自动清理、不占家目录）
+scp gateway-1.1.0.tar lcc@192.168.157.129:/tmp/
+```
+
+```bash
+# ---- 双节点分别执行 ----
+tar -tf /tmp/gateway-1.1.0.tar > /dev/null && echo "tar 完整 ✓"   # 先验完整性再导入（P18 惯例）
+sudo k3s ctr -n k8s.io images import /tmp/gateway-1.1.0.tar
+sudo k3s ctr -n k8s.io images ls | grep gateway                    # 核对：两台 digest 一致
+rm /tmp/gateway-1.1.0.tar                                          # 用完即删（P21 惯例）
+```
+
+**清单更新（`~/k8s-lab/micro-lab.yaml`）——先备份，再两条 sed**：
+
+```bash
+cp ~/k8s-lab/micro-lab.yaml ~/k8s-lab/micro-lab.yaml.bak-1001
+
+# ① 镜像 tag（"image: gateway:1.0.0" 全文件唯一）
+sed -i 's|image: gateway:1.0.0|image: gateway:1.1.0|' ~/k8s-lab/micro-lab.yaml
+
+# ② env 名——★ 行号限定第 166 行！
+#    全文件替换会误伤 user-service（26 行）/ order-service（97 行）的同名 env——
+#    它们的 yml 还是旧风格，改了没人接住（静默降级）
+sed -i '166s|SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR|NACOS_ADDR|' ~/k8s-lab/micro-lab.yaml
+
+# 复查（三处 env 状态 + 两处镜像 tag）
+grep -n 'image:\|SPRING_CLOUD\|NACOS_ADDR' ~/k8s-lab/micro-lab.yaml
+```
+
+```bash
+# ---- 提交 + 观察 ----
+kubectl apply -f ~/k8s-lab/micro-lab.yaml     # apply 幂等：只有 gateway 模板变了，只有它滚动
+kubectl rollout status deploy/gateway
+kubectl get pod -l app=gateway -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[0].image,STATUS:.status.phase'
+```
+
+### 5.4 通关证据（2026-10-01）
+
+| 验证 | 命令 | 结果 |
+|------|------|------|
+| **改前基线** | `curl 30090/api/tasks` | **404**（无匹配路由） |
+| **核心判据** | `curl 30090/api/health` | **200** `{"status":"ok","service":"research-agent-backend"}` ← 网关→真实项目回执 |
+| **数据链路** | `curl 30090/api/tasks` | **200** 任务列表（09-28 端到端任务 `TASK-F86D065F`「集群端到端验证」在列） |
+| **老路由回归** | `curl 30090/api/users/1` | **200** `{"userId":1,"userName":"张三","userPhone":"13800000001","userLevel":"黄金会员"}`（micro-lab 链路无损） |
+
+### 5.5 小结
+
+- 网关成为"统一入口"：**同一入口按路径分流**——`/api/users|orders` 走教学服务、`/api/tasks|health` 走真实项目；
+- 一次交付两件事：路由到真实项目 + gateway 的 env 风格统一（"顺路优化"的范例）；
+- ~~遗留选项（挂账）：user/order 的占位符升级（"B 升级"）——等下次有别的改动时顺路做~~ → **✅ 2026-10-03 清账日 2.0 已结清**（镜像 1.1.0 ×2 + 清单 env 统一 `NACOS_ADDR`，四服务占位符式全统一——见《微服务实战复盘.md》7.3 演进记录 2）；
+- **课后彩蛋（2026-10-01）**：滚动重启 backend（两终端：一个循环打网关、一个 `rollout restart deploy/research-agent`）——**全程零失败**（循环 curl 无一个非 200）——"preStop + 优雅摘牌"的零中断理想在**真实项目**上验证成真。
+
+---
+
+## 六、第 5 课：配置中心接入（2026-10-03 完成）
+
+> **课程结构**：本章分上下半场——**上半场**（2026-10-02 凌晨）：镜像 1.5 改造 + 撞上"客户端-服务端版本错配"（6.1~6.4）；**下半场**（2026-10-03）：升级 Nacos Server 3.0.3，配置中心正式点亮（6.5~6.6）。
+
+### 6.1 目标与改造（镜像 1.5，已上线）
+
+**目标**：backend 接入 Nacos config——业务配置搬进配置中心、支持热更新（承接第 3 课"注册"之后的下一站）。
+
+| 层 | 改动 | 说明 |
+|----|------|------|
+| **pom** | +`spring-cloud-starter-alibaba-nacos-config`、+`spring-boot-starter-actuator` | 配置通道 + 观测窗（版本由 BOM 管） |
+| **yml** | +`spring.config.import: optional:nacos:research-agent-backend.yaml`；+`spring.cloud.nacos.config.server-addr: ${NACOS_ADDR:...}`；+`management` 暴露 `health,info,env` | `optional:` = Nacos 无此配置也照常启动 |
+| **清单** | +`MANAGEMENT_ENDPOINT_ENV_SHOW_VALUES=always`（观测窗开真值）；+`SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=nacos-svc:8848`（引导配置补注入） | 两次 env 补注入均**无效**——成为诊断链的一环 |
+| **镜像** | 1.5（双节点 import + 上线） | actuator 观测窗验证可用（`/actuator/health` 200、`/actuator/env` 可查） |
+
+### 6.2 现象：配置"读空"
+
+- Nacos 控制台已发布 `research-agent-backend.yaml`（`app.llm.temperature: 0.8`），开放 API 可读 ✓；
+- 应用侧持续报 `NacosConfigDataLoader: config[dataId=research-agent-backend.yaml, group=DEFAULT_GROUP] is empty`（首发 + 重启 ×3 稳定复现）；
+- `/actuator/env/app.llm.temperature` 永远为 `0.2` + 来源 = jar 内 yml——**Nacos 源从未出现在 propertySources**。
+
+### 6.3 诊断链（"证据链排障"方法论现场）
+
+| # | 动作 | 结果 | 结论 |
+|---|------|------|------|
+| 1 | 等待 + 重启 ×3 | 仍 `is empty` | 排除"没等够 / 未建立监听" |
+| 2 | namespace 测试（带 `tenant=public` / 不带） | 均可读到内容 | 排除命名空间语义差异 |
+| 3 | 连接日志普查 | **只有 naming 一组连接**，config 客户端无连接痕迹 | config 模块从未成功连上 |
+| 4 | env 注入 `CONFIG_SERVER_ADDR` | 无效 | 排除"地址未送达"——问题不在地址 |
+| 5 | **版本取证（Maven 仓库）** | **`nacos-client 3.0.3`**（+`nacos-client-basic` 3.0.3，SCA 2025.0.0.0 传递）vs 服务端 **Nacos Server 2.3.2** | ★ 破案线索 |
+| 6 | 官方口径 + 日志特征 | 官方 FAQ："2.X 服务端兼容 1.2.0~2.X 客户端"（**不含 3.x**）；启动日志出现 3.x 特征 `AbstractAbilityControlManager ... support modes: [SDK_CLIENT]`（能力协商） | 佐证 |
+
+### 6.4 结论与路线
+
+**结论（高置信）**：**客户端 3.0.3 ↔ 服务端 2.3.2 跨大版本错配**——这是第 1 课"三件套配套铁律"的**镜像版**：**不只是 Boot / Cloud / Alibaba 要配套，Client ↔ Server 也要看配套表**。
+
+**表现特征（排查陷阱）**：naming（注册）半可用——注册 / 心跳 / 摘牌均正常；**config（配置）静默空读**——**不报错**，只在日志里留下一句歧义的 `is empty`（"配置不存在"与"读取失败"共用同一句话）。
+
+**修复路线**：**升级 Nacos Server → 3.0.3**（与 SCA 2025 的客户端配套）——**✅ 已于 2026-10-03 执行，见 6.5。**
+
+| 要点 | 说明 |
+|------|------|
+| 有利条件 | PVC 持久化已就绪（10-01）；registries 加速已通（10-01）；数据量极小（两条配置，重建即可） |
+| 注意点 | 3.x 的 Server/Console 拆分（控制台端口变化）待查；升级前快照；micro-lab 旧客户端（2.3.2）兼容性当场验证 |
+| 验证三连 | ① backend config 点亮（0.8 + Nacos 源）② 旧客户端兼容 ③ 全链路回归 |
+
+**1.5 镜像不回退**——actuator / show-values / config-import 均为"等升级即生效"的伏笔。
+
+### 6.5 下半场：Nacos Server 升级 3.0.3（2026-10-03 完成）
+
+**① 升级前核实（官方兼容表 + 部署规格）**：
+
+| 查证项 | 结论 |
+|--------|------|
+| micro-lab 客户端（2.3.2）会被"升级坏了"吗 | **不会**——官方兼容表：0.x 不兼容 / 1.x 兼容（v3.2 停）/ **2.x 兼容** / 3.x 兼容 |
+| 客户端-服务端 vs 三件套的"绑定"性质 | 三件套 = **硬绑定**（同进程代码耦合，必须同升）；Nacos C-S = **软绑定（单向兼容）**（协议层：服务端兼容老客户端、不兼容比自己新的客户端——上半场撞的正是后者） |
+| 3.x 镜像硬性要求 | **鉴权三变量必填**（`NACOS_AUTH_TOKEN`（Base64、原文 >32 字符）/ `NACOS_AUTH_IDENTITY_KEY` / `NACOS_AUTH_IDENTITY_VALUE`）——缺则拒启 |
+| 3.x 运营形态变化 | Server/Console 拆分（**控制台独立 8080**，首启初始化 admin 密码）；API v3 化（admin 需 token） |
+
+**② 三个决策**：
+
+| # | 决策 | 理由 |
+|---|------|------|
+| ① | **干净重建**：新卷 `nacos-pvc-v3`（旧卷 `nacos-pvc` 保留观察） | 2.x→3.x 的 Derby 表结构迁移无官方路径（手册只覆盖 MySQL）；数据仅两条配置，重建零风险 |
+| ② | 设三变量、**不开客户端鉴权**（不设 `NACOS_AUTH_ENABLE=true`） | 官方 quickstart 默认形态；⚠️ 学习环境简化路径——企业级需开启并给所有客户端配 creds（留作"鉴权课"） |
+| ③ | 控制台 Service + `8080 → NodePort 30080` | 3.x 控制台独立后的访问入口 |
+
+**③ 交付链（本课特有动作）**：
+
+```bash
+# 升级前：VMware 快照 + 导出两条配置（趁 v1 API 可用）+ 控制台人眼核对条数
+# 预拉镜像：★ 走 kubelet 通道（ctr pull 不读 mirror 配置——清账日破案结论）
+kubectl run pull-v303-node1 --image=docker.io/nacos/nacos-server:v3.0.3 --restart=Never \
+  --overrides='{"spec":{"nodeName":"lccserver"}}' --command -- sh -c "echo pull-ok"
+kubectl run pull-v303-node2 --image=docker.io/nacos/nacos-server:v3.0.3 --restart=Never \
+  --overrides='{"spec":{"nodeName":"lccserver-node2"}}' --command -- sh -c "echo pull-ok"
+# 清单四处变更（nacos.yaml）：镜像 tag / +鉴权三 env / 新卷 nacos-pvc-v3 / Service +8080
+# apply（Recreate：先杀后建——短暂中断）
+```
+
+**④ 现场新知识（实测）**：
+
+| 项 | 结果 | 说明 |
+|----|------|------|
+| 启动形态 | 日志**双横幅**：`Nacos Server API`（8848）+ `Nacos Console 3.0.3 ... Port: 8080` | Server/Console 拆分亲眼所见 |
+| `/nacos/actuator/health` | **404** | 3.x 健康路径变化（2.x 老路径退役） |
+| **v1 API 兼容层** | **实测活着**：`/nacos/v1/ns/service/list` 与 `/nacos/v1/cs/configs` 均正常返回 | 社区"v1 默认禁用"说法对 3.0.3 读接口不成立——我们的老验证命令继续可用 |
+| 控制台 | 首访初始化管理员（用户 `nacos`；学习环境，文档不落密码明文） | 8080 → NodePort 30080 |
+
+### 6.6 通关证据（2026-10-03）
+
+| 验证 | 命令 | 结果 |
+|------|------|------|
+| **★ 配置中心点亮**（判据一） | `/actuator/env/app.llm.temperature` | `property.source = DEFAULT_GROUP@research-agent-backend.yaml, value 0.8`；**propertySources 中 Nacos 源（0.8）排在 jar 内 yml（0.2）之前**——优先级栈实战证据 |
+| **旧客户端读配置**（判据二） | 经网关 `/api/users/config/welcome` | 新欢迎语（micro-lab 2.3.2 → 3.0.3 服务端读配置成功，零重启） |
+| **全链路**（判据三） | `/api/health` + `/api/tasks` | 200 + 200（`TASK-F86D065F` 在列） |
+| **双年代同台** | Nacos 服务列表 | gateway / user-service / order-service（**2.3.2**）+ research-agent-backend（**3.0.3**）同注册于 3.0.3 服务端 |
+| 配置重建 | 控制台（从升级前导出文件粘贴） | 两条配置原文核对 + 新库 v1 API 读回一致 |
+
+**小结**：上半场挖出的"版本代际问题"在下半场闭环——**服务端换代、两端客户端零改动无感**（自动重连重注册）；"客户端-服务端也是配套表，但**服务端单向兼容**"这条认知，由 live 现场立此存照。
+
+### 6.7 课后彩蛋：热更新闭环 + 健康检查形态定案（2026-10-03）
+
+#### ★ 热更新实验：改值立变（零重启）
+
+**实验**：控制台把 `app.llm.temperature` 0.8 → 0.5——**三点对照一次对齐**：
+
+| 视角 | 命令 | 结果 |
+|------|------|------|
+| **服务端**（Nacos 存的） | v1 API 读配置 | `temperature: 0.5` ✓ |
+| **客户端**（backend 生效的） | `/actuator/env/app.llm.temperature` | Nacos 源 `value: 0.5` ✓ |
+| **日志**（推送→刷新链路） | `kubectl logs … \| grep -E "refresh\|push"` | 新时间戳 `13:24:18` 五连 ✓（md5 `9f840a27…` → `049a7b49…`） |
+
+**客户端日志全链路拆解**（13:24:18 那次，从推送到刷新 **307ms**）：
+
+```text
+13:24:18.217  Receive server push request (ConfigChangeNotifyRequest)  ← 服务端推送到达
+13:24:18.218  [server-push] config changed → Ack                       ← 确认回执
+13:24:18.234  [notify-listener] … md5=049a7b49…                        ← MD5 比对（变了）→ 派发
+13:24:18.235  [Nacos Config] Receive Nacos config change               ← SCA 收到变更
+13:24:18.541  Refresh keys changed: [app.llm.temperature]              ← ★ Spring 刷新事件（精确到键）
+13:24:18.542  [notify-ok] job run cost=307 millis                       ← 全链路闭环
+```
+
+（前一组 `12:41:25` 的对照实验同样成功，510ms——两次实验互为复现。）**结论**：配置中心"**改值立变、零重启**"闭环成立——**第 5 课存在的最终意义**。
+
+#### 健康检查形态定案（3.0.3 实测）
+
+| 探测 | 结果 | 定论 |
+|------|------|------|
+| `8848/nacos/actuator/prometheus` | 200（JVM 指标文本） | ★ 8848 暴露的唯一 actuator 端点 = **prometheus** |
+| `8848/nacos/actuator`（索引） | `{"_links":{…"prometheus":…}}` | 只有 self + prometheus——"Exposing 1 endpoint"之谜钉死 |
+| `8848/nacos/actuator/health` | **404** | **3.0.3 无 health 端点**（2.x 形态退役） |
+| `8080/actuator/health` | 500（`No static resource`） | Console 无 actuator；**Spring Boot 3.2 的"伪装 500"** |
+| `/nacos/v3/console/health/readiness` | 404 / 500 | 3.0.3 尚无此接口（更高版本才有） |
+
+**探针结论**：将来给 Nacos 加 K8s 探针——用 **TCP 探针（8848）** 或届时查最新官方示例——**别照抄 2.x 的 `/nacos/actuator/health`**。
+
+**方法论沉淀**：① **"500 可能是伪装成 500 的 404"**——状态码必须结合**响应体**读（本轮一次推断被现场修正——"证据链"方法论自我示范）；② **"记忆里的路径"在新版本上失效是常态**——查证 > 记忆。
+
+---
+
+## 七、踩坑记录（B 编号）
 
 | # | 坑 | 现象 | 解法 |
 |---|-----|------|------|
@@ -410,10 +677,11 @@ for i in 1 2 3; do curl -s ".../instance/list?serviceName=research-agent-backend
 
 ---
 
-## 六、进度与待办
+## 八、进度与待办
 
 - [x] **第 1 课**：数据层进集群（PG 16 + Redis 7 + PVC + 持久化验证）——2026-09-26
 - [x] **第 2 课（✅ 2026-09-28 完成）**：backend 进集群——镜像 1.3（B2 修复版）双节点上线 + env/反亲和/resources + **Flyway 建表成功（9 张）** + 双副本 Running + 接口 200 + 端到端任务落库验证。途中趟过：B2（Flyway 模块缺失）、B3（实验表挡路）、node1 掉线大营救（见《虚拟机……》E.10/P22）
 - [x] **第 3 课（✅ 2026-09-28 完成）**：Nacos 接入——三件套 2025 版本线（Cloud 2025.0.0 / Alibaba 2025.0.0.0）+ 注册成功（2 实例 healthy）+ 动态实验 2→1→2；镜像 1.4。插曲：B4（sed → nano）
-- [ ] **第 4 课（下一目标）**：gateway 接 Nacos，路由到 `research-agent-backend`（"真实项目微服务化第一步"）
-- [ ] 关联小课：`registries.yaml` 修复（K3s 自动走加速源，一劳永逸；需重启 k3s——独立安排，别打断主线）
+- [x] **第 4 课（✅ 2026-10-01 完成）**：gateway 路由到 `research-agent-backend`——镜像 1.1.0（新路由 3：`Path=/api/tasks/**,/api/health`、不加 StripPrefix）+ gateway yml 占位符化 + 清单 env 改 `NACOS_ADDR`；通关证据：网关 404→200（health/tasks/users 三连 200）
+- [x] **关联小课 ✅（2026-10-01 清账日完成）**：`registries.yaml` 修复——重启 k3s 渲染 `certs.d` 改道牌后，**双节点实测"裸名镜像"577ms 拉取成功**；途中破案历史误判（"ctr 不走 mirror 配置"，正确验证姿势 = kubelet/CRI 路径——详见《micro-lab配置文件全景讲解.md》第五章"真相揭示"）
+- [x] **第 5 课（✅ 2026-10-03 完成）**：配置中心接入——镜像 1.5（config-import + actuator 观测窗）；上半场诊断"客户端 3.0.3 ↔ 服务端 2.3.2 版本错配"（第六章）；下半场 **升级 Nacos Server 3.0.3**（新卷 `nacos-pvc-v3` + 鉴权三变量 + 控制台 8080→NodePort 30080）→ **配置中心点亮**（temperature 0.8 / Nacos 源）+ **双年代客户端同台**（2.3.2 与 3.0.3）+ 全链路 200

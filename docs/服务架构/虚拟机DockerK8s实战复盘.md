@@ -39,9 +39,10 @@
   - [E.8 Pod 反亲和：让副本分散到不同节点](#e8-pod-反亲和让副本分散到不同节点)
   - [E.9 Ingress：给集群装统一大门](#e9-ingress给集群装统一大门)
   - [E.10 IP 静态化战役（2026-09-19，根治 NAT 漂移）](#e10-ip-静态化战役2026-09-19根治-nat-漂移)
+  - [E.11 集群加固课：Nacos 持久化 + 镜像加速收官（2026-10-01）](#e11-集群加固课nacos-持久化--镜像加速收官2026-10-01)
 - [七、踩坑大全（P1-P21）](#七踩坑大全血泪经验务必先读)
 - [八、关键概念速查](#八关键概念速查脱离会话也能复习)
-- [九、当前环境状态清单](#九当前环境状态清单截至-2026-09-26)
+- [九、当前环境状态清单](#九当前环境状态清单截至-2026-10-01)
 - [十、未完成 / 待办学习项](#十未完成--待办学习项下次从这里续)
 - [十一、推荐学习顺序回顾](#十一推荐学习顺序回顾)
 
@@ -932,6 +933,54 @@ kubectl get nodes                              # 应回到双 Ready
 
 ---
 
+### E.11 集群加固课：Nacos 持久化 + 镜像加速收官（2026-10-01）
+
+> 本日是"真实项目接入"主线之外的一次**集群加固收官日**——三件事：① **Nacos 从"重启即丢"升级为 PVC 持久化**（有状态服务改造实战）；② **清账日**（v5 漂移固化 + 镜像加速收官）；③ 配套课程（第 4 课 gateway 路由、彩蛋"滚动重启零失败"）见《backend接入集群实战复盘.md》第五章。
+
+#### ① 背景：一笔挂了半个月的账
+
+Nacos（standalone）自入集群起**没有挂载卷**——数据存容器可写层，**重建即全丢**。至本日它已历 **5 次容器重启**，配置数据（`user-service.yaml` 欢迎语）在某次重启中蒸发——验尸：`curl ".../nacos/v1/cs/configs?dataId=user-service.yaml"` → `config data not exist`。**万幸** user-service 的 `spring.config.import: optional:nacos:...` 让服务照常启动（"**optional: 兜底**"的价值现场——配置没了，服务不崩，只是功能降级）。
+
+#### ② 改造：四处改动，一次交付
+
+清单 `~/k8s-lab/nacos.yaml`（备份 `bak-1001` → 整文覆盖升级）：
+
+| 改动 | 内容 | 为什么 |
+|------|------|--------|
+| **+ PVC** | `nacos-pvc`（local-path 1Gi） | Derby 数据落盘 |
+| **+ strategy** | `type: Recreate` | ★ 单副本 + RWO 卷：滚动更新会让新旧 Pod 争抢卷（第 1 课 PG 同款知识） |
+| **+ volumeMount** | `/home/nacos/data` | Nacos 的 Derby 数据目录 |
+| **+ volumes** | 引用 nacos-pvc | 把卷接进 Pod |
+
+apply 观察：**PVC Pending → Bound**（卷随 Pod 调度落在 node1）；Recreate"先杀旧、再建新"，Nacos 约 1 分钟不可用（微服务客户端自动重连）。
+
+#### ③ 正反两个实验（本课精华）
+
+**实验一 · 配置数据（靠持久化）**：控制台重建 `user-service.yaml`（键 `microlab.welcome-message`）→ 经网关 `curl /api/users/config/welcome`：**兜底文案 → 新文案**（零重启热更新，"从无到有"也触发）→ **`kubectl delete pod -l app=nacos`** → 新 Pod 起来后：
+
+- 配置 API 原文返回 ✓（**Derby 数据活过了"死亡"**）；
+- welcome 保持新文案（**未退回兜底**）✓。
+
+**实验二 · 注册数据（靠自愈）**：杀 Pod 后服务名单一度为空 → **1~2 分钟内 4 个服务自动长回**（`{"count":4,...}`）——临时实例存内存 + 客户端心跳重注册 = **自愈**。
+
+> **本课核心对照**：配置数据靠**持久化**（PVC），注册数据靠**自愈**（心跳）——两类数据、两种命运。
+
+#### ④ 知识卡片
+
+| 知识点 | 一句话 |
+|--------|--------|
+| PVC + local-path | 卷跟 Pod 走；杀 Pod 重建后 Pod 锚定原节点（本课两次验证） |
+| Recreate 策略 | 单副本 + RWO 卷的标配："先杀后建"换"卷不打架" |
+| 持久化边界 | 数据在节点本地卷 → **整机故障仍会丢**（生产靠网络存储 / Nacos 集群模式） |
+| standalone → cluster 演进 | 单机 = 1 JVM + Derby；集群 = 3 节点 + MySQL（后续课，StatefulSet 届时登场） |
+
+#### ⑤ 同日收官：清账日
+
+- **v5 漂移固化**：4 笔 `kubectl set env` 漂移写回 `micro-lab.yaml`（顺序对齐 live）→ apply **零滚动**归位（详见《micro-lab配置文件全景讲解.md》第四章 v5 / 第七章）；
+- **镜像加速收官**：重启双节点 k3s（**实测零容器重启**——shim 保活机制）→ 破案"**ctr 不走 mirror 配置**"的历史误判 → **kubelet 裸名拉取双节点实测成功**（577ms / 1s，详见《micro-lab配置文件全景讲解.md》第五章"真相揭示"）。
+
+---
+
 ## 七、踩坑大全（血泪经验，务必先读）
 
 | # | 坑 | 现象 | 根因 | 解法 |
@@ -958,6 +1007,7 @@ kubectl get nodes                              # 应回到双 Ready
 | P20 | 同名旧 tar 冒充新镜像 | 新 Pod 探针 404 永不就绪（其他服务却正常）；两台 digest 一致但为旧值 | 多行粘贴漏跑某条 `docker save` → scp 传的还是旧文件（同名不可辨） | 单点重做 build/save 并核对 tar 时间戳；import 后核对 digest 变化；进阶用不可变 tag（详见《微服务实战复盘.md》9.9） |
 | P21 | 小盘跑 K8s → DiskPressure 驱逐风暴 | node1 9.8G 盘用至 87% → kubelet 驱逐成片 Pod（order 8 个、sentinel 30+ 个循环驱逐、三服务全下线）；随后新 Pod 拉不到镜像（磁盘高压下 Image GC 清掉了"无容器使用"的镜像） | **扩容四连补完**（growpart→pvresize→lvextend→resize2fs，9.8G→38G）；**镜像 tar 用完即删**；K8s 节点盘建议 ≥20G；认知：kubelet 保命双机制 = Eviction + Image GC（详见《微服务实战复盘.md》9.13-F） |
 | P22 | **IP 静态化未根治 → DHCP 反扑引发 IP 冲突**（2026-09-28） | node1 NotReady；k3s-agent 卡 `activating`、每 15s 循环 `127.0.0.1:6444 connection reset`；`ctr` 报 socket 不存在；连对端 `.129` 都 ping 不通 | cloud-init 的 `50-cloud-init.yaml`（dhcp4: true）与静态配置**并存** → 重启后 DHCP 把 node1 的 `.128` 发给了 node2 → **两台 IP 撞车**（另：agent 缓存里还有历史地址 `.130` 干扰） | **彻底配方**：禁 cloud-init 网络接管（`99-disable-network-config.cfg`）+ 移走 50- 文件 + 每台一份静态配置 + 清 agent 地址缓存 + restart agent——全录见 **E.10**（C/D 节） |
+| P23 | **YAML 缩进陷阱：探针"跑进"了卷元素**（2026-10-03） | `kubectl apply` 报 `strict decoding error: unknown field "spec.template.spec.volumes[0].livenessProbe"...`——而 `--dry-run=client` 却显示 "configured"（放行） | nano 手工插入探针块时，插到了 Pod 级 `volumes:` 的 `- name: data` 元素内——**容器级 `ports:` 与卷元素属性 `persistentVolumeClaim:` 同为 10 空格缩进、父级却不同**，肉眼难辨 | ① 全量重写（heredoc）一次纠正；② **结构性 YAML 修改的预检用 `--dry-run=server`**（服务端真校验、不落库；`client` 档只做浅检）；③ 服务端 strict decoding **原子拒绝**，失败不留半吊子状态 |
 
 ### LVM 磁盘扩容三连（P6/P7 解法，企业高频操作）
 
@@ -1045,7 +1095,7 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 
 ---
 
-## 九、当前环境状态清单（截至 2026-09-26）
+## 九、当前环境状态清单（截至 2026-10-01）
 
 | 项 | 状态 |
 |----|------|
@@ -1054,13 +1104,14 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 | node2（lccserver-node2） | Docker + K3s **server**（v1.36.4+k3s1） |
 | 集群形态 | **双节点**：node2 = control-plane，node1 = agent，均 Ready |
 | 静态 IP（✅ 2026-09-28 彻底落地） | 双节点 Netplan 静态化**补完**：node1 = `.128`、node2 = `.129`（禁用 cloud-init 网络接管，杜绝重启漂移）；期间完整演练"DHCP 反扑 → IP 冲突 → node1 掉线 → 修复"战役（见 E.10 / 踩坑 P22） |
-| research-agent | **1.3** Deployment（2026-09-28 接入集群内 PostgreSQL + Redis：Flyway 迁移建表、profile=pg；双副本 + 软反亲和 + resources）+ Service NodePort 30081——详见《backend接入集群实战复盘.md》 |
+| research-agent | **1.5** Deployment（双副本 + 软反亲和 + resources）+ Service NodePort 30081；已接入：集群内 PG/Redis（Flyway 建表 9 张）+ Nacos 注册（第 3 课）+ **gateway 路由到 backend**（第 4 课）+ **Nacos 配置中心**（第 5 课：`research-agent-backend.yaml` 热更新——temperature / `@RefreshScope` 链路）——详见《backend接入集群实战复盘.md》 |
 | 数据层（集群内） | **PostgreSQL 16 + Redis 7**（2026-09-26 入集群）：PVC（local-path）持久化 + Secret 密码 + ClusterIP Service（postgres-svc:5432 / redis-svc:6379）；"杀 Pod 数据存活"验证通过——详见同目录《backend接入集群实战复盘.md》 |
-| 镜像分布 | research-agent **1.3** + micro-lab 三镜像（user-service / order-service / gateway）+ postgres / redis（daocloud 全名）均在两台节点的 k8s.io 命名空间 |
+| Nacos（集群内） | **2026-10-01 PVC 持久化**（"杀 Pod 配置存活 + 注册自愈"验证通过——此前重启 5 次曾丢配置）；**2026-10-03 服务端升级 3.0.3**（新卷 `nacos-pvc-v3` 干净重建 + 鉴权三变量 + 控制台独立 8080→NodePort 30080 + **TCP 探针三件套**）：**双年代客户端同台**（micro-lab 2.3.2 + backend 3.0.3 均正常注册/读配置）；StatefulSet + 集群模式（3 节点 + MySQL）留作后续 |
+| 镜像分布 | research-agent **1.5** + gateway **1.1.0** + user-service / order-service **1.1.0**（2026-10-03 占位符统一）+ **nacos-server v3.0.3** + postgres / redis（daocloud 全名）均在两台节点的 k8s.io 命名空间；旧 tag 已清理（2026-10-03 清账日 2.0） |
 | node2 磁盘/内存 | 根分区 38G（已扩容），内存 6G |
 | 代码改动 | `ResearchAgentApplication.java` main 加了 “Starting version 1.1” 标记日志 |
 | 后端 Dockerfile | `backend/Dockerfile`（多阶段 + 加速源 + 非 root）已就绪 |
-| 快照 | **新增（2026-09-28）**：双节点 `backend上线-0928`（封存"IP 静态化补完 + PG/Redis 数据层 + backend 1.3 接入"）；历史：node2 “K3s-1.1稳定版”、node1 “扩容完成 / Docker就绪” |
+| 快照 | **新增（2026-10-01）**：双节点 `清账日-1001`（封存"Nacos PVC 持久化 + gateway 1.1.0 路由 + v5 漂移固化 + 镜像加速收官"）；历史：`backend上线-0928`（09-28：IP 静态化补完 + PG/Redis 数据层 + backend 1.3 接入）、node2 “K3s-1.1稳定版”、node1 “扩容完成 / Docker就绪” |
 
 ---
 
@@ -1077,8 +1128,8 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 
 **待办：**
 
-- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（09-19）→ Sentinel Dashboard ✅ → 彩蛋实验（Feign 限流×降级联动）✅ → **⑩ 监控体系（Prometheus + Grafana + common tag）✅（2026-09-19 深夜，见《微服务实战复盘.md》9.13）**。**剩余：配置中心深化、Nacos StatefulSet+PVC、迁移到真实项目**
-- [ ] **真实项目接入集群（进行中，2026-09-26 起）**：backend（research-agent）走"生产式"路线（数据/服务全在集群）——第 1 课 ✅ 数据层进集群（PG 16 + Redis 7：PVC 持久化 + Secret + 杀 Pod 数据存活）→ **第 2 课 ✅ backend 接入**（1.3：Flyway 建表 9 张 + 双副本 Running + 接口 200；途中踩坑 B2/B3 与 node1 掉线大营救——见 E.10/P22）→ **第 3 课 ✅ Nacos 接入**（1.4：注册中心 2 实例 healthy + 动态实验 2→1→2；版本线 Cloud 2025.0 / Alibaba 2025.0.0.0）→ 后续：网关路由（gateway 接 Nacos 找 backend）。**详细实战记录见同目录《backend接入集群实战复盘.md》**
+- [ ] **微服务改造（进行中，2026-09-13 起）**：micro-lab 教学项目（user-service / order-service / gateway）——**详细实战记录见同目录《微服务实战复盘.md》**。进度：①~⑦ ✅ → ⑧ 全量部署到 K3s ✅（2026-09-17）→ ⑨ 探针与零中断"完全体" ✅（09-19）→ Sentinel Dashboard ✅ → 彩蛋实验（Feign 限流×降级联动）✅ → **⑩ 监控体系（Prometheus + Grafana + common tag）✅（2026-09-19 深夜，见《微服务实战复盘.md》9.13）** → **⑪ gateway 升级 1.1.0 ✅（2026-10-01：路由真实项目 `lb://research-agent-backend` + Nacos 地址占位符化——见《backend接入集群实战复盘.md》第五章）**。**剩余：配置中心深化 ✅（2026-10-03 完成：backend config 接入 + Nacos Server 升级 3.0.3 + 热更新闭环——见《backend接入集群实战复盘.md》第六章）；Nacos 持久化 ✅（2026-10-01 PVC 升级——见状态清单）；StatefulSet + 集群模式（3 节点 + MySQL）待做（注：3.0.3 无 HTTP health 端点——将来加探针用 TCP 8848）**
+- [ ] **真实项目接入集群（进行中，2026-09-26 起）**：backend（research-agent）走"生产式"路线（数据/服务全在集群）——第 1 课 ✅ 数据层进集群（PG 16 + Redis 7：PVC 持久化 + Secret + 杀 Pod 数据存活）→ **第 2 课 ✅ backend 接入**（1.3：Flyway 建表 9 张 + 双副本 Running + 接口 200；途中踩坑 B2/B3 与 node1 掉线大营救——见 E.10/P22）→ **第 3 课 ✅ Nacos 接入**（1.4：注册中心 2 实例 healthy + 动态实验 2→1→2；版本线 Cloud 2025.0 / Alibaba 2025.0.0.0）→ **第 4 课 ✅ 网关路由**（gateway 1.1.0：`lb://research-agent-backend`，404→200，2026-10-01）→ **第 5 课 ✅ 配置中心接入**（1.5：config 点亮——`app.llm.temperature` 热更新闭环；Nacos Server 升级 3.0.3 + 双年代客户端同台，2026-10-03）→ 后续：Sentinel / 监控进阶 / 鉴权。**详细实战记录见同目录《backend接入集群实战复盘.md》**
 - [x] **（微服务延伸）Sentinel Dashboard**：已部署进 K8s（NodePort 30058）+ order-service 接入 + 流控实战（2026-09-19，详见《微服务实战复盘.md》9.11；含"自建镜像：白名单 403 → GitHub Release + 三重校验"的完整踩坑记录）
 - [ ] **Docker Desktop 长期加速**：Settings → Docker Engine 里补 `registry-mirrors`（写死 FROM 只是临时方案）
 - [ ] **（可选）修复 node1 → node2 免密登录**：当前 scp 仍需密码，重新 `ssh-copy-id` 一次
@@ -1089,9 +1140,10 @@ kubectl describe pod <名>                              # 人类友好版：Cond
 - [x] **preStop + 优雅停机 + startupProbe**：零中断"完全体"落地（2026-09-19，详见《微服务实战复盘.md》9.10）
 - [x] **node2 IP 收敛复核**：✅ 2026-09-28 完成并**升级为彻底方案**——发现"静态化未根治"（cloud-init DHCP 并存 → IP 冲突复发），执行最终配方（禁 cloud-init + 独立静态配置 + 清 agent 缓存），双节点 IP 固化；建议择机做"终极验收"：重启两台确认不漂（见 E.10 C/D 节）
 - [ ] **监控进阶（集群侧）**：node-exporter（节点层）+ kube-state-metrics（K8s 层）+ 首条告警——补齐"节点层/K8s 层"盲区（磁盘风暴正是节点层盲区的代价；详见《微服务实战复盘.md》9.14 与待办）
-- [ ] **registries.yaml 修复**：配置内容正确但未生效（改后需**重启 k3s**）——修复后所有镜像拉取自动走 daocloud 加速（免"全名 + retag"流程；详见《微服务实战复盘.md》9.13-E）
+- [x] **registries.yaml 修复 ✅（2026-10-01 清账日完成）**：重启 k3s 渲染 `certs.d` 改道牌后，双节点实测"裸名镜像"**577ms 拉取成功**；途中破案历史误判——**"ctr 不走 mirror 配置"**（正确验证姿势 = kubelet/CRI 路径；详见《micro-lab配置文件全景讲解.md》第五章"真相揭示"）
 - [x] **node1 磁盘扩容补完**：完整四连落地，根分区 9.8G → 38G（2026-09-19 深夜；09-13 悬案复盘见 P21）
 - [x] **快照存档**：✅ 2026-09-28 拍摄双节点 `backend上线-0928`（覆盖：IP 静态化补完 + 数据层 + backend 1.3 接入 + 监控全链路——即原"监控全链路-0919"建议的升级版）
+- [x] **Nacos Server 升级 → 3.0.3 ✅（2026-10-03 完成）**：SCA 2025 的 nacos-client 3.0.3 与 2.3.2 服务端错配（config 静默空读）→ 升级 Server 3.0.3（新卷 `nacos-pvc-v3` 干净重建 + 鉴权三变量 + 控制台独立 8080→NodePort 30080）→ **配置中心点亮 + 双年代客户端同台**（micro-lab 2.3.2 与 backend 3.0.3 均正常注册/读配置）；现场实测：v1 API 兼容层可用、`/nacos/actuator/health` 路径变化（404）。完整记录见《backend接入集群实战复盘.md》第六章。
 - [ ] **Nacos 鉴权企业级配置**：NACOS_AUTH_ENABLE=true 全家桶（默认不鉴权的对照）
 
 ---
