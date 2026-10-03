@@ -16,7 +16,8 @@ public record ApiError(
         String message,
         String path,
         OffsetDateTime timestamp,
-        List<FieldViolation> fields) {
+        List<FieldViolation> fields,
+        boolean retryable) {
 
     /** 单个字段的校验失败明细（如 field=title、reason=title 不能为空）。 */
     public record FieldViolation(String field, String reason) {
@@ -24,11 +25,11 @@ public record ApiError(
 
     /** 便捷构造：无字段明细（大多数错误场景）。 */
     public static ApiError of(String code, String message, String path) {
-        return new ApiError(code, message, path, OffsetDateTime.now(), List.of());
+        return new ApiError(code, message, path, OffsetDateTime.now(), List.of(), false);
     }
 
     /** 便捷构造：带字段明细（参数校验失败场景）。 */
     public static ApiError of(String code, String message, String path, List<FieldViolation> fields) {
-        return new ApiError(code, message, path, OffsetDateTime.now(), fields);
+        return new ApiError(code, message, path, OffsetDateTime.now(), fields, false);
     }
 }
