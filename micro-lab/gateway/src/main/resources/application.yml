@@ -10,7 +10,10 @@ spring:
     nacos:
       discovery:
         # Nacos 地址：网关靠它把"服务名"解析成实际实例地址
-        server-addr: 192.168.157.129:30048
+        # 第 4 课（2026-10-01）升级为 L2 占位符写法（与 backend 统一风格）：
+        #   本地开发：走冒号后的默认值（直连虚拟机 NodePort）
+        #   集群内：由 env NACOS_ADDR=nacos-svc:8848 覆盖
+        server-addr: ${NACOS_ADDR:192.168.157.129:30048}
 
     gateway:
       # 关闭"按服务名自动路由"（默认就关）：自动路由不必写规则，
@@ -41,3 +44,13 @@ spring:
             - Path=/api/orders/**
           filters:
             - StripPrefix=1
+
+        # 路由 3（第 4 课，2026-10-01）：/api/tasks 与 /api/health → 真实项目 research-agent-backend
+        # ★ 注意与上面两条的关键差异：这里【不加】StripPrefix
+        #   - micro-lab 的 user/order 服务：接口路径不带 /api 前缀（如 /users/1）→ 必须剥掉 /api
+        #   - backend：接口自带 /api 前缀（如 /api/tasks）→ 原样转发
+        #   判断法：StripPrefix 取什么值，永远"看目标服务实际的路径长什么样"，而不是看网关的习惯
+        - id: research-agent-route
+          uri: lb://research-agent-backend
+          predicates:
+            - Path=/api/tasks/**,/api/health

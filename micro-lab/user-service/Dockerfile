@@ -2,7 +2,7 @@
 # user-service 镜像构建文件（单阶段简化版）
 # 构建前提：已在 micro-lab 根目录执行 mvn clean package -DskipTests（产出 jar）
 # 构建命令（在 micro-lab 根目录）：
-#   docker build -t user-service:1.0.0 user-service
+#   docker build -t user-service:1.1.0 user-service    # tag 随交付轮次递增（清账日 2.0 → 1.1.0）
 # ============================================================
 
 # 基础镜像：JRE 21 精简版。直写 daocloud 加速源域名，绕开拉取被墙的问题
