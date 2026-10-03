@@ -1,11 +1,22 @@
 spring:
   application:
     name: research-agent-backend
+
+  # 配置中心接入（第 5 课，2026-10-01）：启动时从 Nacos 拉取该 dataId 并合并进配置栈
+  # optional: 前缀 = Nacos 上没有这份配置也照常启动（服务不因配置中心缺席而失败）
+  config:
+    import:
+      - optional:nacos:research-agent-backend.yaml
+
   cloud:
     nacos:
       discovery:
         # 注册中心（第 3 课，2026-09-28）：本地直连走虚拟机 NodePort；
         # 集群内由 env NACOS_ADDR=nacos-svc:8848 覆盖（与 micro-lab 同款模式）
+        server-addr: ${NACOS_ADDR:192.168.157.129:30048}
+      config:
+        # 配置中心（第 5 课，2026-10-01）：与注册中心是同一个 Nacos（复用 NACOS_ADDR）
+        # ★ 引导配置：连 Nacos 的地址只能放本地 yml / 由 env 注入——不能放进 Nacos（鸡生蛋）
         server-addr: ${NACOS_ADDR:192.168.157.129:30048}
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/research_agent}
@@ -31,6 +42,14 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # 第 5 课（2026-10-01）：暴露 env 端点，用于观察配置"来源与取值"（热更新实验观测窗）
+        # ★ 生产环境不建议暴露 env（可能泄漏配置明细）——学习环境临时开放
+        include: health,info,env
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
