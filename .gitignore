@@ -58,3 +58,6 @@ temp/
 
 # 过滤打包镜像包
 *.tar
+
+# 示例 Java 语法文件
+exmpleJavaGrammar.java
