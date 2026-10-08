@@ -184,6 +184,7 @@ org.springframework.web.HttpRequestMethodNotSupportedException                 �
 | `METHOD_NOT_ALLOWED` | 405 | 请求方法不支持 ★ 10-08 新增 |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | 请求体类型不支持 ★ 10-08 新增 |
 | `NOT_FOUND` | 404 | 路径不存在 ★ 10-08 新增 |
+| `CONCURRENT_CONFLICT` | 409 | 乐观锁冲突（并发修改同一资源，请刷新重试）★ 场景② 新增 |
 | `INTERNAL_ERROR` | 500 | 未预料异常（兜底） |
 
 ### 7.4 校验约定
