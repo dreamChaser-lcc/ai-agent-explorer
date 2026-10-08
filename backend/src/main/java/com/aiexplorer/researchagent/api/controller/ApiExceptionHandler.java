@@ -8,10 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 统一处理接口层常见异常，返回一致的错误结构（ApiError）。
@@ -55,6 +59,48 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiError handleIllegalState(IllegalStateException exception, HttpServletRequest request) {
         return ApiError.of("INVALID_STATE", exception.getMessage(), request.getRequestURI());
+    }
+
+    // ===================== 场景① 补丁：框架级异常，让 4xx 各归其位 =====================
+
+    /**
+     * ★ 新增：路径变量类型不匹配（例：/api/tasks/not-a-uuid —— UUID 位置给了非法字符串）→ 400。
+     * 补丁前：落进下方 Exception 兜底，被误报成 500"服务器内部错误"（语义错位 + 日志假警报）。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiError handleTypeMismatch(MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
+        return ApiError.of("INVALID_PARAMETER",
+                "参数格式错误：" + exception.getName(), request.getRequestURI());
+    }
+
+    /**
+     * ★ 新增：请求方法不支持（例：用 GET 访问只接受 POST 的 /pause）→ 405。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public ApiError handleMethodNotSupported(HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
+        return ApiError.of("METHOD_NOT_ALLOWED",
+                "请求方法不支持：" + exception.getMethod(), request.getRequestURI());
+    }
+
+    /**
+     * ★ 新增：请求体媒体类型不支持（例：Content-Type: text/plain，应使用 application/json）→ 415。
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+    public ApiError handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+        return ApiError.of("UNSUPPORTED_MEDIA_TYPE",
+                "请求体类型不支持，请使用 application/json", request.getRequestURI());
+    }
+
+    /**
+     * ★ 新增：路径不存在（野路径）→ 404（Spring 6.1+ 的 NoResourceFoundException）。
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiError handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
+        return ApiError.of("NOT_FOUND", "请求的资源不存在", request.getRequestURI());
     }
 
     /** ★ 新增：兜底——未预料异常统一 500；日志留痕、响应不泄露内部细节。 */
