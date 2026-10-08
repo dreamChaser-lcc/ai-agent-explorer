@@ -13,9 +13,13 @@ CREATE TABLE IF NOT EXISTS research_task (
     created_by VARCHAR(128) NULL,
     started_at TIMESTAMP WITH TIME ZONE NULL,
     completed_at TIMESTAMP WITH TIME ZONE NULL,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
+
+-- 兼容已有库：老库（表已存在）缺 version 列时补上（IF NOT EXISTS → 本文件可重复执行）
+ALTER TABLE research_task ADD COLUMN IF NOT EXISTS version BIGINT DEFAULT 0 NOT NULL;
 
 CREATE TABLE IF NOT EXISTS research_plan (
     id UUID PRIMARY KEY,

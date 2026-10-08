@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;                  // 主键
 import jakarta.persistence.Table;               // 表名映射
+import jakarta.persistence.Version;             // 乐观锁版本号
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.Getter;      // Lombok：自动生成 getter 方法
@@ -132,4 +133,13 @@ public class ResearchTaskEntity extends BaseTimeEntity { // 继承 BaseTimeEntit
      */
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    /**
+     * 乐观锁版本号（JPA @Version）：每次 UPDATE 自动 +1。
+     * 并发更新同一行时（他人已抢先修改），UPDATE 会匹配 0 行
+     * → 抛 OptimisticLockingFailureException → 值班室转成 409（请刷新重试）。
+     */
+    @Version
+    @Column(nullable = false)
+    private long version;
 }

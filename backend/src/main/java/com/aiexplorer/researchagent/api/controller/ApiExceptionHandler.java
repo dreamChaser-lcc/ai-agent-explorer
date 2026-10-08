@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -101,6 +102,16 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ApiError handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
         return ApiError.of("NOT_FOUND", "请求的资源不存在", request.getRequestURI());
+    }
+
+    /**
+     * ★ 新增（场景②）：乐观锁冲突——并发更新同一行（两人同时操作同一任务）→ 409。
+     * 语义：你的请求与服务器当前状态冲突——请刷新后重试（这是"明确的失败"，不是 500 意外）。
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError handleOptimisticLock(OptimisticLockingFailureException exception, HttpServletRequest request) {
+        return ApiError.of("CONCURRENT_CONFLICT", "数据已被其他操作修改，请刷新后重试", request.getRequestURI());
     }
 
     /** ★ 新增：兜底——未预料异常统一 500；日志留痕、响应不泄露内部细节。 */

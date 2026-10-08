@@ -12,5 +12,13 @@ public enum TaskStatus {
     PAUSED,
     COMPLETED,
     FAILED,
-    CANCELLED
+    CANCELLED;
+
+    /**
+     * 是否为终态：任务已经结束，不应再发生任何状态迁移。
+     * （J6 学的"枚举带方法"实战——把"哪些算结束"这个规则收在枚举自己身上。）
+     */
+    public boolean isTerminal() {
+        return this == COMPLETED || this == FAILED || this == CANCELLED;
+    }
 }

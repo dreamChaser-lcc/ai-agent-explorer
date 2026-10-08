@@ -51,6 +51,7 @@ public class ResearchTaskControlService {
     @Transactional
     public void confirmPlan(UUID taskId, boolean approved, String responseMessage) {
         ResearchTaskEntity task = requireTask(taskId);
+        requireStatus(task, "确认计划", TaskStatus.WAITING_FOR_CONFIRMATION); // 状态机守卫：只有"待确认"的任务能被确认
         ResearchPlanEntity latestPlan = researchPlanRepository.findByTaskIdOrderByVersionDesc(taskId).stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("任务缺少可确认的研究计划"));
@@ -110,6 +111,10 @@ public class ResearchTaskControlService {
     @Transactional
     public void pauseTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);
+        if (task.getStatus() == TaskStatus.PAUSED) {
+            return; // 幂等：目标状态已达成，重复请求无害（直接按成功返回）
+        }
+        requireNotTerminal(task, "暂停"); // 状态机守卫：已结束的任务不能被"暂停"
         task.setStatus(TaskStatus.PAUSED);
         researchTaskRepository.save(task);
         taskEventService.recordUserEvent(taskId, null, EventType.TASK_PAUSED, "任务已暂停。");
@@ -126,6 +131,8 @@ public class ResearchTaskControlService {
     @Transactional
     public void resumeTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);
+        // 严格守卫：只允许从 PAUSED 恢复（防止对运行中的任务重复触发执行器）
+        requireStatus(task, "恢复执行", TaskStatus.PAUSED);
         task.setStatus(TaskStatus.RUNNING);
         task.setCurrentStage(TaskStage.EXECUTING);
         researchTaskRepository.save(task);
@@ -145,6 +152,10 @@ public class ResearchTaskControlService {
     @Transactional
     public void cancelTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);
+        if (task.getStatus() == TaskStatus.CANCELLED) {
+            return; // 幂等：已取消，重复请求无害
+        }
+        requireNotTerminal(task, "取消"); // 状态机守卫：已完成/已失败的任务不能被"取消"
         task.setStatus(TaskStatus.CANCELLED);
         researchTaskRepository.save(task);
         taskEventService.recordUserEvent(taskId, null, EventType.TASK_CANCELLED, "任务已取消。");
@@ -161,5 +172,26 @@ public class ResearchTaskControlService {
     private ResearchTaskEntity requireTask(UUID taskId) {
         return researchTaskRepository.findById(taskId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
+    }
+
+    /**
+     * 状态机守卫（严格版）：仅当任务处于指定状态时放行，否则拒绝。
+     * 拒绝 → IllegalStateException → 值班室转 400 INVALID_STATE（"任务当前状态为 X，无法 Y"）。
+     */
+    private void requireStatus(ResearchTaskEntity task, String action, TaskStatus expected) {
+        if (task.getStatus() != expected) {
+            throw new IllegalStateException(
+                    "任务当前状态为 " + task.getStatus() + "，无法" + action);
+        }
+    }
+
+    /**
+     * 状态机守卫（终态版）：已完成/已失败/已取消的任务（终态）拒绝任何迁移。
+     */
+    private void requireNotTerminal(ResearchTaskEntity task, String action) {
+        if (task.getStatus().isTerminal()) {
+            throw new IllegalStateException(
+                    "任务已结束（" + task.getStatus() + "），无法" + action);
+        }
     }
 }
