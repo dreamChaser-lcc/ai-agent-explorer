@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- MyBatis SQL 映射文件：与 ResearchTaskMapper 接口一一对应 -->
+<mapper namespace="com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.ResearchTaskMapper">
+
+    <!--
+      分页查询（场景③ 主角——手写 SQL 逐行读）：
+        SELECT 列清单   → 要哪些列（列全写、不用 SELECT *：结果稳定、可读、可索引覆盖）
+        FROM research_task
+        <where> + <if>  → MyBatis 动态 SQL：status 传了才拼这个条件，没传就查全部
+        #{status}       → 预编译参数占位符（安全——不是字符串拼接，防 SQL 注入）
+        ORDER BY created_at DESC → 按创建时间倒序（最新在前）
+        LIMIT #{size} OFFSET #{offset} → 数据库层分页：只取 N 条、跳过前 M 条
+                                          （对应索引：created_at 上的索引让"取最新 N 条"免排序）
+    -->
+    <select id="findPage" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchTaskEntity">
+        SELECT id, task_no, title, goal, execution_mode, status, current_stage,
+               current_step_id, requires_confirmation, priority, error_message,
+               created_by, started_at, completed_at, version, created_at, updated_at
+        FROM research_task
+        <where>
+            <if test="status != null">
+                status = #{status}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!--
+      计数查询：条件必须与 findPage 严格保持一致（否则"总数"和"本页数据"会对不上）。
+      COUNT(*) 统计"满足 WHERE 条件的行数"——配合 LIMIT 的结果算出 totalPages。
+    -->
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM research_task
+        <where>
+            <if test="status != null">
+                status = #{status}
+            </if>
+        </where>
+    </select>
+
+</mapper>

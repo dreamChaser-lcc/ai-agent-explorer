@@ -5,6 +5,7 @@ import com.aiexplorer.researchagent.api.request.CreateResearchTaskRequest; // �
 import com.aiexplorer.researchagent.api.request.PlanConfirmationRequest;   // 确认/拒绝计划的请求体
 
 // ===================== 响应 DTO 导入 =====================
+import com.aiexplorer.researchagent.api.response.PageResponse;          // 分页响应壳（列表用）
 import com.aiexplorer.researchagent.api.response.StepExecutionResponse; // 步骤执行记录的响应
 import com.aiexplorer.researchagent.api.response.TaskEventResponse;      // 任务事件的响应
 import com.aiexplorer.researchagent.api.response.TaskDetailResponse;     // 任务详情的响应
@@ -17,6 +18,9 @@ import com.aiexplorer.researchagent.application.service.ResearchTaskCommandServi
 import com.aiexplorer.researchagent.application.service.ResearchTaskControlService; // 任务控制（暂停/恢复/取消/确认计划）
 import com.aiexplorer.researchagent.application.service.ResearchTaskQueryService;   // 任务读操作（列表、详情）
 
+// ===================== 枚举导入 =====================
+import com.aiexplorer.researchagent.shared.enums.TaskStatus; // 任务状态（列表筛选用）
+
 // ===================== 框架注解导入 =====================
 import jakarta.validation.Valid; // 触发请求体参数的 JSR-303 校验（@NotBlank, @NotNull 等）
 import java.util.List;
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping;      // GET 请求映
 import org.springframework.web.bind.annotation.PathVariable;    // 从 URL 路径中提取变量（如 /api/tasks/{taskId}）
 import org.springframework.web.bind.annotation.PostMapping;     // POST 请求映射
 import org.springframework.web.bind.annotation.RequestBody;     // 从请求体中提取 JSON
+import org.springframework.web.bind.annotation.RequestParam;    // 从查询串提取参数（分页/筛选）
 import org.springframework.web.bind.annotation.RequestMapping;  // 类级别路径前缀
 import org.springframework.web.bind.annotation.ResponseStatus;  // 自定义 HTTP 返回码
 import org.springframework.web.bind.annotation.RestController;  // 声明这是 REST 控制器（返回 JSON）
@@ -95,13 +100,21 @@ public class ResearchTaskController {
     }
 
     /**
-     * 返回所有已创建的任务摘要列表（按时间倒序）。
+     * 分页 + 筛选返回任务摘要列表（按创建时间倒序）。
      *
-     * GET /api/tasks
+     * GET /api/tasks?page=0&size=20&status=RUNNING
+     *   page   页码（默认 0——从 0 开始）
+     *   size   每页条数（默认 20，服务端上限 100）
+     *   status 状态筛选（可选——不传则返回全部）
+     *
+     * 返回结构（场景③ 起）：分页壳 { content, page, size, totalElements, totalPages }。
      */
     @GetMapping                // 处理 GET /api/tasks
-    public List<TaskSummaryResponse> listTasks() {
-        return researchTaskQueryService.listTasks();
+    public PageResponse<TaskSummaryResponse> listTasks(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) TaskStatus status) {
+        return researchTaskQueryService.listTasks(page, size, status);
     }
 
     /**

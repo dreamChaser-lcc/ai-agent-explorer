@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS research_task (
 -- 兼容已有库：老库（表已存在）缺 version 列时补上（IF NOT EXISTS → 本文件可重复执行）
 ALTER TABLE research_task ADD COLUMN IF NOT EXISTS version BIGINT DEFAULT 0 NOT NULL;
 
+-- 场景③：列表查询索引（手写 SQL 的搭档——让"排序 + 分页 + 筛选"走索引）
+-- idx_research_task_created_at：ORDER BY created_at DESC + LIMIT 直接走索引（免全表扫、免排序）
+-- idx_research_task_status    ：WHERE status = ? 筛选走索引
+CREATE INDEX IF NOT EXISTS idx_research_task_created_at ON research_task (created_at);
+CREATE INDEX IF NOT EXISTS idx_research_task_status ON research_task (status);
+
 CREATE TABLE IF NOT EXISTS research_plan (
     id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
