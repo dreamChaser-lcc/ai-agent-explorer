@@ -17,7 +17,7 @@
     <select id="findPage" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchTaskEntity">
         SELECT id, task_no, title, goal, execution_mode, status, current_stage,
                current_step_id, requires_confirmation, priority, error_message,
-               created_by, started_at, completed_at, version, created_at, updated_at
+               created_by, started_at, completed_at, idempotency_key, version, created_at, updated_at
         FROM research_task
         <where>
             <if test="status != null">
@@ -40,6 +40,19 @@
                 status = #{status}
             </if>
         </where>
+    </select>
+
+    <!--
+      幂等查询（场景④）：按幂等键找"首次创建的任务"。
+      命中 → 说明这是重复请求（双击 / 重试）→ 直接返回已有任务（重放），不再做任何创建动作。
+      WHERE idempotency_key = #{idempotencyKey} → 走 uq_research_task_idempotency_key 唯一索引。
+    -->
+    <select id="findByIdempotencyKey" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchTaskEntity">
+        SELECT id, task_no, title, goal, execution_mode, status, current_stage,
+               current_step_id, requires_confirmation, priority, error_message,
+               created_by, started_at, completed_at, idempotency_key, version, created_at, updated_at
+        FROM research_task
+        WHERE idempotency_key = #{idempotencyKey}
     </select>
 
 </mapper>

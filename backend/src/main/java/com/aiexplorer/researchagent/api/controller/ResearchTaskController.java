@@ -12,6 +12,7 @@ import com.aiexplorer.researchagent.api.response.TaskDetailResponse;     // 任�
 import com.aiexplorer.researchagent.api.response.TaskSummaryResponse;    // 任务摘要的响应（列表用）
 
 // ===================== 服务层导入 =====================
+import com.aiexplorer.researchagent.application.service.CreateTaskOutcome;        // ★ 创建结果（场景④：携带"是否真新建"，供 201/200 判定）
 import com.aiexplorer.researchagent.application.service.TaskActivityQueryService;   // 查活动（步骤时间线、事件日志）
 import com.aiexplorer.researchagent.application.service.TaskProgressStreamService;  // SSE 实时推送
 import com.aiexplorer.researchagent.application.service.ResearchTaskCommandService; // 任务写操作（创建）
@@ -26,6 +27,7 @@ import jakarta.validation.Valid; // 触发请求体参数的 JSR-303 校验（@N
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;                     // HTTP 状态码枚举
+import org.springframework.http.ResponseEntity;                  // 精细控制响应状态码（场景④：201/200）
 import org.springframework.web.bind.annotation.GetMapping;      // GET 请求映射
 import org.springframework.web.bind.annotation.PathVariable;    // 从 URL 路径中提取变量（如 /api/tasks/{taskId}）
 import org.springframework.web.bind.annotation.PostMapping;     // POST 请求映射
@@ -83,20 +85,25 @@ public class ResearchTaskController {
     }
 
     /**
-     * 创建研究任务并立即触发初版计划生成。
+     * 创建研究任务并立即触发初版计划生成（★ 场景④：支持幂等键）。
      *
      * POST /api/tasks
      * 请求体示例：
-     *   { "title": "Java Agent 架构研究", "goal": "调研主流...", "executionMode": "SYNC" }
+     *   { "title": "Java Agent 架构研究", "goal": "调研主流...", "executionMode": "SYNC",
+     *     "idempotencyKey": "客户端生成的唯一串（可选——重试时带同一个就不会重复创建）" }
+     *
+     * 响应：首次创建 → 201 Created；同键重放（幂等命中）→ 200 OK + 首次创建的任务
      *
      * @param request 前端提交的研究任务信息，@Valid 会触发字段校验
      * @return 创建后的任务摘要（含 TaskNo、状态等）
      */
     @PostMapping               // 处理 POST /api/tasks
-    @ResponseStatus(HttpStatus.CREATED) // 成功时返回 201 Created
-    public TaskSummaryResponse createTask(@Valid @RequestBody CreateResearchTaskRequest request) {
+    public ResponseEntity<TaskSummaryResponse> createTask(@Valid @RequestBody CreateResearchTaskRequest request) {
         // 委托给命令服务，写死 createdBy 为 "demo-user"（MVP 阶段没有用户系统）
-        return researchTaskCommandService.createTask(request, "demo-user");
+        CreateTaskOutcome outcome = researchTaskCommandService.createTask(request, "demo-user");
+        // ★ 场景④：首次创建 201；幂等重放 200 —— 状态码本身就是"是否重复"的可观察信号
+        HttpStatus status = outcome.newlyCreated() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(outcome.task());
     }
 
     /**

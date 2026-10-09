@@ -135,6 +135,14 @@ public class ResearchTaskEntity extends BaseTimeEntity { // 继承 BaseTimeEntit
     private OffsetDateTime completedAt;
 
     /**
+     * 幂等键（场景④）：客户端带来的"此次创建请求的唯一标记"。
+     * 数据库上有唯一索引（schema-dev.sql）——重复提交在数据库层被唯一约束拦下；
+     * null = 普通请求，不参与幂等（唯一索引允许多个 NULL，互不冲突）。
+     */
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
+
+    /**
      * 乐观锁版本号（JPA @Version）：每次 UPDATE 自动 +1。
      * 并发更新同一行时（他人已抢先修改），UPDATE 会匹配 0 行
      * → 抛 OptimisticLockingFailureException → 值班室转成 409（请刷新重试）。

@@ -35,4 +35,12 @@ public interface ResearchTaskMapper {
      * 统计满足筛选条件的总条数（用于计算总页数）。
      */
     long countPage(@Param("status") TaskStatus status);
+
+    /**
+     * 按幂等键查询任务（场景④：幂等"快路径"——重复请求先来这里认领已有结果）。
+     *
+     * @param idempotencyKey 客户端带来的幂等键（非空）
+     * @return 首次创建的任务；没有匹配则返回 null
+     */
+    ResearchTaskEntity findByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey);
 }

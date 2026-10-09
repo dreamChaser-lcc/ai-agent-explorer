@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -112,6 +113,16 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiError handleOptimisticLock(OptimisticLockingFailureException exception, HttpServletRequest request) {
         return ApiError.of("CONCURRENT_CONFLICT", "数据已被其他操作修改，请刷新后重试", request.getRequestURI());
+    }
+
+    /**
+     * ★ 新增（场景④）：数据约束冲突——如幂等键并发撞车（唯一索引仲裁）。
+     * 语义：与并发操作冲突——请重试（重试会走幂等快路径，拿到首次创建的结果）。
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError handleDataIntegrityViolation(DataIntegrityViolationException exception, HttpServletRequest request) {
+        return ApiError.of("CONCURRENT_CONFLICT", "数据冲突（可能为并发重复提交），请重试", request.getRequestURI());
     }
 
     /** ★ 新增：兜底——未预料异常统一 500；日志留痕、响应不泄露内部细节。 */

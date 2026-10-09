@@ -21,11 +21,18 @@ CREATE TABLE IF NOT EXISTS research_task (
 -- 兼容已有库：老库（表已存在）缺 version 列时补上（IF NOT EXISTS → 本文件可重复执行）
 ALTER TABLE research_task ADD COLUMN IF NOT EXISTS version BIGINT DEFAULT 0 NOT NULL;
 
+-- 场景④：幂等键列（客户端带来的"请求唯一标记"——重复提交在数据库层被拦下）
+ALTER TABLE research_task ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128);
+
 -- 场景③：列表查询索引（手写 SQL 的搭档——让"排序 + 分页 + 筛选"走索引）
 -- idx_research_task_created_at：ORDER BY created_at DESC + LIMIT 直接走索引（免全表扫、免排序）
 -- idx_research_task_status    ：WHERE status = ? 筛选走索引
 CREATE INDEX IF NOT EXISTS idx_research_task_created_at ON research_task (created_at);
 CREATE INDEX IF NOT EXISTS idx_research_task_status ON research_task (status);
+
+-- 场景④：幂等键唯一索引（唯一约束 = 并发仲裁者）
+-- ★ 多个 NULL 不冲突：不带幂等键的老请求互不影响；同键并发时数据库作最终仲裁
+CREATE UNIQUE INDEX IF NOT EXISTS uq_research_task_idempotency_key ON research_task (idempotency_key);
 
 CREATE TABLE IF NOT EXISTS research_plan (
     id UUID PRIMARY KEY,
