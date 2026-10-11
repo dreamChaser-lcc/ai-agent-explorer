@@ -5,6 +5,7 @@ import com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchRe
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchReportRepository;
 import com.aiexplorer.researchagent.shared.exception.TaskNotFoundException;
 import java.util.UUID;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class ResearchReportQueryService {
     /**
      * 根据任务编号读取最终研究报告。
      */
+    @Cacheable(value = "report", key = "#taskId") // ★ 场景⑦：读路径缓存——先查缓存，命中直接返回（★ 方法体不执行）；未命中查库并回填
     @Transactional(readOnly = true)
     public ResearchReportResponse getReportByTaskId(UUID taskId) {
         ResearchReportEntity report = researchReportRepository.findByTaskId(taskId)

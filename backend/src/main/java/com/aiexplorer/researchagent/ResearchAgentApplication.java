@@ -2,6 +2,7 @@ package com.aiexplorer.researchagent; // 包声明：这个类属于 com.aiexplo
 
 import org.springframework.boot.SpringApplication; // 导入 Spring Boot 启动器，提供 run() 方法
 import org.springframework.boot.autoconfigure.SpringBootApplication; // 导入核心注解
+import org.springframework.cache.annotation.EnableCaching; // ★ 场景⑦：打开缓存开关
 
 /**
  * 研究智能体后端服务启动入口。
@@ -11,6 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication; // 导入�
  * - main 方法调用 SpringApplication.run()，启动内嵌 Tomcat，读取 application.yml，初始化所有 Bean
  */
 @SpringBootApplication // 组合注解 = @Configuration + @EnableAutoConfiguration + @ComponentScan
+@EnableCaching         // ★ 场景⑦：打开 Spring Cache——"申请书+外包工"家族再添一员（CacheInterceptor 上岗）
 public class ResearchAgentApplication {
 
     /**

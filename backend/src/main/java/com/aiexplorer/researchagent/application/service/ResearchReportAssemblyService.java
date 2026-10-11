@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,7 @@ public class ResearchReportAssemblyService {
     /**
      * 根据任务执行结果和来源资料生成最终研究报告。
      */
+    @CacheEvict(value = "report", key = "#taskId") // ★ 场景⑦：写路径失效——报告重建后踢掉旧缓存（下次读自动重建）
     @Transactional
     public ResearchReportEntity buildReport(UUID taskId) {
         List<SourceDocumentEntity> sources = sourceDocumentRepository.findByTaskIdOrderByCreatedAtDesc(taskId);

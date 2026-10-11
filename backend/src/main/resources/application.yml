@@ -45,6 +45,12 @@ spring:
         # ★ 长任务护航：研究任务可能跑几分钟——默认 5 分钟（max.poll.interval.ms）会被误判
         #   "消费者死亡" → 触发重平衡 → 重复消费。调大到 1 小时（配合"至少一次 + 状态守卫"的容错设计）。
         max.poll.interval.ms: 3600000
+  cache:
+    # 场景⑦：缓存接入（报告查询提速）——type=redis：用 Redis 做缓存后端
+    # 注：TTL（30 分钟）与值序列化（JSON）由 CacheConfiguration 自定义接管；
+    #    兜底职责不变——@CacheEvict 可能漏，TTL 保证"最多旧 30 分钟"
+    # ★ 切勿写空的 redis: 节点（只挂注释无键值）——空壳节点会让属性绑定以诡异方式失败
+    type: redis
   jpa:
     open-in-view: false
     hibernate:
