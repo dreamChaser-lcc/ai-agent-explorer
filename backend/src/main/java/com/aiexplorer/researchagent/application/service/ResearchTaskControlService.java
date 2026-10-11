@@ -6,6 +6,7 @@ import com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchTa
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.HumanConfirmationRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchPlanRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchTaskRepository;
+import com.aiexplorer.researchagent.shared.annotation.AuditLog; // 审计注解（场景⑤：贴了它的方法自动留痕）
 import com.aiexplorer.researchagent.shared.enums.ConfirmationStatus;
 import com.aiexplorer.researchagent.shared.enums.EventType;
 import com.aiexplorer.researchagent.shared.enums.PlanStatus;
@@ -48,6 +49,7 @@ public class ResearchTaskControlService {
     /**
      * 处理研究计划确认结果，并决定任务是继续执行还是终止。
      */
+    @AuditLog("CONFIRM_PLAN") // 场景⑤：审计留痕——确认/拒绝计划
     @Transactional
     public void confirmPlan(UUID taskId, boolean approved, String responseMessage) {
         ResearchTaskEntity task = requireTask(taskId);
@@ -108,6 +110,7 @@ public class ResearchTaskControlService {
     /**
      * 暂停运行中的任务，新的步骤不会继续推进。
      */
+    @AuditLog("PAUSE_TASK") // 场景⑤：审计留痕——暂停
     @Transactional
     public void pauseTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);
@@ -128,6 +131,7 @@ public class ResearchTaskControlService {
     /**
      * 恢复已暂停任务，并从当前检查点继续执行。
      */
+    @AuditLog("RESUME_TASK") // 场景⑤：审计留痕——恢复
     @Transactional
     public void resumeTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);
@@ -149,6 +153,7 @@ public class ResearchTaskControlService {
     /**
      * 取消任务并广播状态变更。
      */
+    @AuditLog("CANCEL_TASK") // 场景⑤：审计留痕——取消
     @Transactional
     public void cancelTask(UUID taskId) {
         ResearchTaskEntity task = requireTask(taskId);

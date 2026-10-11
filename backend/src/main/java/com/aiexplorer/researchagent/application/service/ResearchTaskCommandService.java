@@ -5,6 +5,7 @@ import com.aiexplorer.researchagent.api.response.TaskSummaryResponse;      // �
 import com.aiexplorer.researchagent.infrastructure.persistence.entity.ResearchTaskEntity; // 数据库实体
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchTaskRepository; // 数据库操作接口
 import com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.ResearchTaskMapper;  // ★ MyBatis：幂等键查询（场景④）
+import com.aiexplorer.researchagent.shared.annotation.AuditLog; // 审计注解（场景⑤：贴了它的方法自动留痕）
 import com.aiexplorer.researchagent.shared.enums.TaskStage;  // 任务阶段枚举（PLANNING / EXECUTING / REPORTING）
 import com.aiexplorer.researchagent.shared.enums.TaskStatus; // 任务状态枚举（QUEUED / RUNNING / COMPLETED ...）
 import java.util.Locale;
@@ -55,6 +56,7 @@ public class ResearchTaskCommandService {
      * @param createdBy 创建者（MVP 硬编码为 "demo-user"）
      * @return 创建结果（任务摘要 + 本次是否真新建——供 Controller 决定 201/200）
      */
+    @AuditLog("CREATE_TASK") // 场景⑤：审计留痕——创建操作（target_id 为 null——创建时还没有任务 id）
     @Transactional // 确保以下所有数据库操作在同一个事务中，要么全部成功要么全部回滚
     public CreateTaskOutcome createTask(CreateResearchTaskRequest request, String createdBy) {
         // ★ 场景④ 快路径：幂等键命中 → 这是重复请求（双击 / 超时重试）→ 直接返回首次结果，不再创建
