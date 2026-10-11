@@ -28,8 +28,6 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Executor;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -62,7 +60,7 @@ public class ResearchTaskOrchestrator {
     private final TaskEventService taskEventService;                     // 事件记录服务
     private final TaskProgressStreamService taskProgressStreamService;   // SSE 进度推送
     private final ObjectMapper objectMapper;                             // JSON 序列化
-    private final Executor researchTaskExecutor;                         // 异步执行线程池
+    private final TaskExecutionProducer taskExecutionProducer;           // ★ 场景⑥：任务执行消息生产者（ASYNC 走 Kafka）
 
     // ===================== 构造器注入 =====================
     public ResearchTaskOrchestrator(
@@ -75,7 +73,7 @@ public class ResearchTaskOrchestrator {
             TaskEventService taskEventService,
             TaskProgressStreamService taskProgressStreamService,
             ObjectMapper objectMapper,
-            @Qualifier("researchTaskExecutor") Executor researchTaskExecutor) { // @Qualifier 按名称注入指定的线程池 Bean
+            TaskExecutionProducer taskExecutionProducer) { // ★ 场景⑥：注入消息生产者（替代原线程池注入）
         this.researchTaskRepository = researchTaskRepository;
         this.researchStepRepository = researchStepRepository;
         this.stepExecutionRepository = stepExecutionRepository;
@@ -85,13 +83,13 @@ public class ResearchTaskOrchestrator {
         this.taskEventService = taskEventService;
         this.taskProgressStreamService = taskProgressStreamService;
         this.objectMapper = objectMapper;
-        this.researchTaskExecutor = researchTaskExecutor;
+        this.taskExecutionProducer = taskExecutionProducer;
     }
 
     /**
      * 按任务配置的执行模式启动任务。
      *
-     * ASYNC 模式：提交到线程池异步执行，主线程立即返回（不阻塞 Controller）
+     * ASYNC 模式：发布执行消息到 Kafka（场景⑥），主线程立即返回（不阻塞 Controller）
      * SYNC 模式：同步执行为止，适用为测试和简单场景
      *
      * @param taskId 任务 UUID
@@ -100,9 +98,12 @@ public class ResearchTaskOrchestrator {
         ResearchTaskEntity task = loadTask(taskId); // 加载任务，校验是否存在
 
         if (task.getExecutionMode() == ExecutionMode.ASYNC) {
-            // 异步模式：用 Runnable lambda 包装 executeTask，提交到线程池
+            // ★ 场景⑥：ASYNC 从"线程池"升级为"消息队列"——
+            //   原来是 researchTaskExecutor.execute(() -> executeTask(taskId))（进程内提交）；
+            //   现在只【发一条消息】（秒回）——真正的执行由 TaskExecutionConsumer 消费后驱动。
+            //   （原线程池 Bean researchTaskExecutor 保留在容器中——退居二线，供未来用途）
             // Controller 收到返回后，前端通过 /api/tasks/{id}/stream 获取实时进度
-            researchTaskExecutor.execute(() -> executeTask(taskId));
+            taskExecutionProducer.publish(taskId);
             return;
         }
 

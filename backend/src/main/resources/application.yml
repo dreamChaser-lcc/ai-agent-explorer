@@ -28,6 +28,23 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+  kafka:
+    # 场景⑥：Kafka 接入（任务消息化——异步执行从"线程池"升级为"消息队列"）
+    # 开发环境：本地 docker 单节点（KRaft 模式）；集群化部署（G1）后续按需衔接
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: research-agent-backend
+      # 新消费者组从【最早】消息开始读（学习环境友好：能看到历史消息——"重放"演示的前提）
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # ★ 长任务护航：研究任务可能跑几分钟——默认 5 分钟（max.poll.interval.ms）会被误判
+        #   "消费者死亡" → 触发重平衡 → 重复消费。调大到 1 小时（配合"至少一次 + 状态守卫"的容错设计）。
+        max.poll.interval.ms: 3600000
   jpa:
     open-in-view: false
     hibernate:
