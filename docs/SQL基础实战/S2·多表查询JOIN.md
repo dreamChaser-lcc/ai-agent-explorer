@@ -178,7 +178,71 @@ task_title          | step_title
 
 ---
 
-## 八、项目关联地图
+## 八、自连接：一张表演两个角色（补课 2026-10-16）
+
+**场景**：一行数据指向**同一张表**的另一行。项目实例就在 `schema-dev.sql` 第 65 行：
+
+```sql
+depends_on_step_id UUID NULL   -- 步骤依赖哪个步骤（指向 research_step 自己的 id）
+```
+
+前端类比：员工表里每行有 `manager_id`，指向**同表**的另一行（经理也是员工）——查"员工 + 他的经理"就得把员工表假装成两张表用一次。
+
+```sql
+SELECT s.title  AS step_title,        -- 角色 1：当前步骤
+       d.title  AS depends_on_title   -- 角色 2：它依赖的那个步骤
+FROM research_step s
+LEFT JOIN research_step d ON d.id = s.depends_on_step_id;
+```
+
+三个要点：
+
+1. **同一张表出现两次，各发一个别名**（`s` 和 `d`）——数据库把 `research_step` 当成两份拷贝，`ON` 描述两份之间的关联规则；
+2. **必须用 LEFT**：第一步（或无依赖的步骤）`depends_on_step_id` 是 NULL，INNER 会把它们丢掉——"步骤存在但没依赖"的事实要保留（S2 主课的老规矩）；
+3. `ON d.id = s.depends_on_step_id`：读作"依赖的那行 = 表里 id 等于我指向的那个 id 的行"。
+
+## 九、子查询：查询里套查询（补课 2026-10-16）
+
+**本质**：一条 SQL 内部先跑一个"内层查询"，把结果交给外层用——类比 JS 里**先算出一个中间数组，再拿它做下一步过滤**：
+
+```js
+const failedTaskIds = executions.filter(e => e.status === 'FAILED').map(e => e.taskId);  // 内层
+const tasks = allTasks.filter(t => failedTaskIds.includes(t.id));                          // 外层
+```
+
+SQL 版（IN 子查询，最常用）：
+
+```sql
+SELECT id, title
+FROM research_task
+WHERE id IN (SELECT task_id FROM step_execution WHERE status = 'SUCCESS');
+--              ↑ 内层先跑：产出"有成功执行的 task_id 集合"
+--              ↑ 外层再跑：任务 id 在集合里的都留下
+```
+
+**三种常见位置**：
+
+| 位置 | 写法 | 类比 |
+|---|---|---|
+| `WHERE ... IN (...)` | 外层拿内层的**值集合**做过滤 | `includes(id)` |
+| `FROM (...) 别名` | 内层产出一张**临时表**，外层当表用 | 先 `.map()` 出中间结果再加工 |
+| `SELECT (SELECT ...)` | 标量子查询（每行算一个值）——了解即可 | 行内计算属性 |
+
+FROM 子查询实例（把 S3 的分桶结果当临时表再过滤）：
+
+```sql
+SELECT status, cnt
+FROM (SELECT status, COUNT(*) AS cnt
+      FROM research_task
+      GROUP BY status) AS bucket   -- 内层结果 = 一张临时表，必须起别名
+WHERE cnt >= 2;
+```
+
+**与 JOIN 的关系**：很多 IN 子查询可以改写成 JOIN（去重后关联）。两种写法现在知道"等价、可互换"即可——哪种更快，S6 用 EXPLAIN 见分晓。**选择建议**：语义是"在/不在某个集合"→ IN 子查询更直观；语义是"把两边的列拼一起看"→ JOIN 更自然。
+
+---
+
+## 十、项目关联地图
 
 | JOIN 知识 | 项目位置 |
 |---|---|
@@ -192,7 +256,7 @@ task_title          | step_title
 
 ---
 
-## 九、动手练习（H2 控制台）
+## 十一、动手练习（H2 控制台）
 
 ```sql
 -- 练习 1：INNER JOIN 任务 + 计划（只返回有计划的任务）
@@ -225,17 +289,42 @@ SELECT COUNT(*) AS cartesian_count FROM research_task t JOIN research_plan p;
 -- 练习 6（可选）：列名歧义现场——把下面这条的 title 前缀去掉，看报什么错
 SELECT t.title, s.title FROM research_task t
 JOIN research_step s ON s.task_id = t.id;
+
+-- 练习 7（补课）：自连接——步骤 + 它依赖的步骤（同一张表演两个角色）
+SELECT s.title  AS step_title,
+       s.depends_on_step_id,
+       d.title  AS depends_on_title
+FROM research_step s
+LEFT JOIN research_step d ON d.id = s.depends_on_step_id
+ORDER BY s.created_at DESC
+LIMIT 15;
+-- 预期留心：depends_on_step_id 为 null 的行 = 没设依赖的步骤（LEFT 保住它们）
+
+-- 练习 8（补课）：IN 子查询——"有成功执行记录"的任务
+SELECT id, title
+FROM research_task
+WHERE id IN (SELECT task_id FROM step_execution WHERE status = 'SUCCESS');
+-- 预期：只返回有 SUCCESS 执行记录的任务（对照 S2 主课练习③：任务 B 无执行记录应缺席）
+
+-- 练习 9（补课）：FROM 子查询——分桶结果当临时表再过滤
+SELECT status, cnt
+FROM (SELECT status, COUNT(*) AS cnt
+      FROM research_task
+      GROUP BY status) AS bucket
+WHERE cnt >= 2;
+-- 预期：与 S3 练习 1 的分桶结果一致，但小桶（cnt < 2）被滤掉
 ```
 
 **验收标准**：
 1. 练习 2 行数 ≥ 练习 1，且能指出"多出来的行 = 哪些任务"；
 2. 练习 4 两个数字能解释差额来源；
 3. 练习 5 的数字 = 15 × 计划数（乘法关系，亲眼见证）；
-4. 练习 6 去掉前缀后看到"列名歧义"报错，理解为什么要写 `t.` / `s.`。
+4. 练习 6 去掉前缀后看到"列名歧义"报错，理解为什么要写 `t.` / `s.`；
+5. **补课**：练习 7 能指出"哪列来自角色 s、哪列来自角色 d"；练习 8 缺席的任务与 S2 主课练习③的 null 行对得上；练习 9 结果与 S3 分桶对账。
 
 ---
 
-## 十、验证记录（2026-10-15 首跑，6/6 全绿）
+## 十二、验证记录（2026-10-15 首跑，6/6 全绿；补课练习见末行）
 
 | 练习 | 结果 | 判定 |
 |---|---|---|
