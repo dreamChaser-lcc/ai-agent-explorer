@@ -62,6 +62,7 @@ LIMIT 10 OFFSET 20
 | `ORDER BY created_at DESC` | 按创建时间**倒序**（最新在前） | `.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))` |
 | `LIMIT 10` | 最多返回 10 行 | `.slice(0, 10)` 的"取多少" |
 | `OFFSET 20` | 跳过前 20 行 | `.slice(20, 30)` 的"从哪开始" |
+| `#{status}` | **参数占位符**：SQL 骨架与参数值分开两次发送，防 SQL 注入（当时漏讲，已增补进 S4 §二） | `textContent` vs `innerHTML`（永远当文本，不被当代码执行） |
 
 三个注意点：
 
