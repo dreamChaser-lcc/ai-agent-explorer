@@ -1,0 +1,71 @@
+name: Deploy Docs
+
+# 只在文档内容或站点工程发生变化时触发，避免后端/前端改动引起无意义构建
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'docs-site/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+# GitHub Pages 部署所需的最小权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只允许一次 Pages 部署，排队执行且不打断正在进行的发布
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build-docs:
+    name: 构建 VitePress 站点
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # 站点工程独立于仓库根部，所有命令都在 docs-site 下执行
+        working-directory: docs-site
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          # 完整历史用于 lastUpdated 读取 git 提交时间
+          fetch-depth: 0
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建文档站点
+        run: npm run build
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy-docs:
+    name: 发布到 GitHub Pages
+    needs: build-docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署
+        id: deployment
+        uses: actions/deploy-pages@v4

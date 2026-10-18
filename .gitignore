@@ -58,3 +58,8 @@ temp/
 
 # 过滤打包镜像包
 *.tar
+
+# docs-site：VitePress 文档站依赖、构建产物与缓存
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.vitepress/cache/
