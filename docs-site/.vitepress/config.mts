@@ -1,5 +1,15 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitepress'
 import { buildDocumentSidebar } from './docs-catalog.mts'
+
+/**
+ * 站点工程自身的 vue 包目录。
+ * srcDir 指向仓库根部的 docs/，该目录下没有 node_modules，
+ * Rollup 从文档文件出发向上找不到 vue，会在 SSR 构建时报
+ * "failed to resolve import vue/server-renderer"。
+ * 因此把 vue 的子路径导入显式指回本工程的 node_modules。
+ */
+const SITE_VUE_PACKAGE_PATH = fileURLToPath(new URL('../node_modules/vue/', import.meta.url))
 
 /**
  * 站点部署根路径。
@@ -54,6 +64,14 @@ export default defineConfig({
   ignoreDeadLinks: true,
   markdown: {
     theme: { light: 'github-light', dark: 'github-dark' }
+  },
+  vite: {
+    resolve: {
+      alias: {
+        // 字符串别名只匹配 "vue" 本身和 "vue/xxx" 子路径，不会误伤 vuex 之类的包名
+        vue: SITE_VUE_PACKAGE_PATH
+      }
+    }
   },
   sitemap: {
     hostname: 'https://dreamchaser-lcc.github.io/ai-agent-explorer/'
