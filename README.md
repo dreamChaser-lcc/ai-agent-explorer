@@ -10,6 +10,12 @@
 - 通过 SSE 实时推送任务进度
 - 查看任务详情、执行时间线、事件日志与最终报告
 
+## 在线文档
+
+- 地址：https://dreamchaser-lcc.github.io/ai-agent-explorer/
+- 内容源：仓库 `docs/` 目录下的全部 markdown 笔记
+- 站点工程：`docs-site/`（VitePress），修改 `docs/` 后推送到 `main` 会自动重新构建并发布
+
 ## 技术栈
 
 ### 前端
