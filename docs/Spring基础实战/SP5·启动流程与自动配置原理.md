@@ -150,13 +150,13 @@ backend/src/main/resources/META-INF/spring/
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 为什么第三方库的类必须靠自动配置进来？
+1. 为什么第三方库的类必须靠自动配置进来？<br>
    **参考答案**：`@ComponentScan` 默认只扫**启动类所在包及其子包**；第三方库包名（如 `org.springframework.data.redis`）完全不同，扫不到。自动配置通过 `AutoConfiguration.imports` **主动列出类名**，绕开扫描——本课实验把 starter 放到 `com.aiexplorer.starterdemo`，正是为了证明这一点。
-2. `AutoConfiguration.imports` 和 `spring.factories` 是什么关系？
+2. `AutoConfiguration.imports` 和 `spring.factories` 是什么关系？<br>
    **参考答案**：2.7 之前自动配置写在 `META-INF/spring.factories`（与监听器等扩展点混在一个文件）；2.7+ 拆到独立的 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`，一行一个类名。旧写法仍兼容但已废弃，新项目用 imports。
-3. `@ConditionalOnMissingBean` 解决什么问题？
+3. `@ConditionalOnMissingBean` 解决什么问题？<br>
    **参考答案**：让**用户自定义优先**。库作者提供默认实现，但你一旦自己定义了同类型 bean，自动配置就自动退让——"约定优于配置，但允许覆盖"。典型：`RedisTemplate`、`ObjectMapper`、`RestTemplate` 都遵循这个模式。
-4. 自动配置类能不能被 `@ComponentScan` 扫到？
+4. 自动配置类能不能被 `@ComponentScan` 扫到？<br>
    **参考答案**：能（如果它在扫描包内），但**不推荐依赖扫描**：第三方库天然在包外，只有 imports 能加载它；依赖扫描会让"能不能生效"取决于包结构，失去可插拔性。
 
 ---
@@ -165,11 +165,11 @@ backend/src/main/resources/META-INF/spring/
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/src/main/java/com/aiexplorer/starterdemo/GreetingProperties.java` | 配置属性（默认值） | ✅ 可删 |
-| `backend/src/main/java/com/aiexplorer/starterdemo/GreetingService.java` | 被自动装配的服务（无 @Component） | ✅ 可删 |
-| `backend/src/main/java/com/aiexplorer/starterdemo/GreetingAutoConfiguration.java` | 自动配置类（条件装配） | ✅ 可删 |
-| `backend/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` | 自动配置加载清单（**全项目只有这一行**） | ✅ 可删 |
-| `backend/.../infrastructure/starterdemo/GreetingDemoRunner.java` | 启动后打印验证 | ✅ 可删 |
+| [`GreetingProperties.java`](../../backend/src/main/java/com/aiexplorer/starterdemo/GreetingProperties.java) | 配置属性（默认值） | ✅ 可删 |
+| [`GreetingService.java`](../../backend/src/main/java/com/aiexplorer/starterdemo/GreetingService.java) | 被自动装配的服务（无 @Component） | ✅ 可删 |
+| [`GreetingAutoConfiguration.java`](../../backend/src/main/java/com/aiexplorer/starterdemo/GreetingAutoConfiguration.java) | 自动配置类（条件装配） | ✅ 可删 |
+| [`AutoConfiguration.imports`](../../backend/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports) | 自动配置加载清单（**全项目只有这一行**） | ✅ 可删 |
+| [`GreetingDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/starterdemo/GreetingDemoRunner.java) | 启动后打印验证 | ✅ 可删 |
 
 > 成组删除：删掉 imports 文件后 starter 立即失效（这正是"清单驱动"的实证）。
 

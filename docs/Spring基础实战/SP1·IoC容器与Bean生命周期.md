@@ -227,7 +227,7 @@ NoUniqueBeanDefinitionException:
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java` | 生命周期五阶段日志演示（构造器/@PostConstruct/@PreDestroy） | ✅ 可删（纯教学） |
+| [`BeanLifecycleDemo.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) | 生命周期五阶段日志演示（构造器/@PostConstruct/@PreDestroy） | ✅ 可删（纯教学） |
 
 > 实验②③ 的临时类（`CycleA`/`CycleB`、第二个 `LlmClient` bean）**已全部删除恢复**，不在代码库中。
 
@@ -247,13 +247,13 @@ NoUniqueBeanDefinitionException:
 
 ## 九、思考题（自查 + 参考答案）
 
-1. 为什么 `@PostConstruct` 里可以安全用注入的依赖，而构造器里用字段注入的依赖会 NPE？
+1. 为什么 `@PostConstruct` 里可以安全用注入的依赖，而构造器里用字段注入的依赖会 NPE？<br>
    **参考答案**：生命周期顺序是"构造器 → 属性注入 → @PostConstruct"。构造器执行时字段注入还没发生（本次实验实测：构造器里 `applicationName=null`）；`@PostConstruct` 在属性注入**之后**，依赖已就绪，可以安全使用。**结论：构造器里只用构造器参数里的依赖，别用字段注入的值。**
-2. 为什么我们的 Service 全是 singleton 却线程安全？如果往 Service 里加一个可变实例字段会发生什么？
+2. 为什么我们的 Service 全是 singleton 却线程安全？如果往 Service 里加一个可变实例字段会发生什么？<br>
    **参考答案**：singleton 只保证"一个实例"，**不保证线程安全**——安全来自"**无状态**"（所有字段都是 final 的依赖，没有可变状态）。若加 `private int count`（可变实例字段），多个请求线程共享同一个实例 → 计数错乱/竞态，需要加锁或改为局部变量/`ThreadLocal`。
-3. 两个 Bean 用构造器互相注入，Spring 能用三级缓存救活吗？为什么？
+3. 两个 Bean 用构造器互相注入，Spring 能用三级缓存救活吗？为什么？<br>
    **参考答案**：**不能**。三级缓存的前提是"对象已经实例化完成（构造器执行完），只是依赖没注入"——它能提前暴露"半成品"。构造器注入要求创建 A **之前** B 必须就绪，而 B 又要求 A 就绪，连"半成品 A"都不存在，无物可暴露 → `BeanCurrentlyInCreationException`（本次实验实测）。正确做法是**重新设计**（抽第三个类），把循环依赖当设计信号。
-4. `prototype` Bean 的 `@PreDestroy` 会执行吗？为什么？
+4. `prototype` Bean 的 `@PreDestroy` 会执行吗？为什么？<br>
    **参考答案**：**不会**。容器只负责 prototype bean 的**创建**，不跟踪实例（创建后交给调用方），因此无法在容器关闭时回调销毁。需要清理时：调用方手动调用清理方法，或实现 `DisposableBean` 并自行触发。
 
 ---

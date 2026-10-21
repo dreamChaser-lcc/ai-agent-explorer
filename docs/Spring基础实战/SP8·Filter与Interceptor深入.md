@@ -308,13 +308,13 @@ POST_OK status=WAITING_FOR_CONFIRMATION
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 为什么在 Filter 里直接读 `request.getInputStream()` 会导致 Controller 拿不到 body？
+1. 为什么在 Filter 里直接读 `request.getInputStream()` 会导致 Controller 拿不到 body？<br>
    **参考答案**：Servlet 的输入流是**消耗型**（读一次就空）。Filter 读完，Controller 的 `@RequestBody` 只能读到 0 字节 → 反序列化失败（400）。必须用 `HttpServletRequestWrapper` 在构造时缓存字节，并让 `getInputStream()` 每次返回**新的**流。
-2. 401 响应为什么必须 `return`，不能继续 `chain.doFilter`？
+2. 401 响应为什么必须 `return`，不能继续 `chain.doFilter`？<br>
    **参考答案**：`chain.doFilter` 会把请求交给下一环（内层 Filter / DispatcherServlet / Controller）——鉴权"拒绝了但还是执行了"，等于没鉴权。写完响应后必须 `return`。
-3. 为什么 CORS 预检（OPTIONS）走不到 Interceptor？
+3. 为什么 CORS 预检（OPTIONS）走不到 Interceptor？<br>
    **参考答案**：预检请求在 **Filter 层**（Spring MVC 自动注册的 `CorsFilter`）就被应答，**不进入 DispatcherServlet**——Interceptor 位于 DispatcherServlet 之内，自然执行不到。所以 CORS 必须配在 Filter/容器层。
-4. 鉴权该放 Filter 还是 Interceptor？
+4. 鉴权该放 Filter 还是 Interceptor？<br>
    **参考答案**：**粗粒度**（有没有 token、IP 是否合法）放 Filter——更早、成本更低；**细粒度**（这个方法需要什么角色，依赖方法上的注解）放 Interceptor——只有它拿得到 `HandlerMethod`。
 
 ---
@@ -323,13 +323,13 @@ POST_OK status=WAITING_FOR_CONFIRMATION
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/.../infrastructure/web/CachedBodyHttpServletRequest.java` | 可重复读请求体的包装器 | ✅ 可删 |
-| `backend/.../infrastructure/web/BodyCachingFilter.java` | 请求体日志 Filter（@Order(2)，**无条件启用**） | ✅ 可删 |
-| `backend/.../infrastructure/web/TokenAuthFilter.java` | Token 鉴权 Filter（@Order(1)，**条件启用**，默认关闭） | ✅ 可删 |
-| `backend/.../infrastructure/web/RequireRole.java` | 方法级角色注解（供 Interceptor 读取） | ✅ 可删 |
-| `backend/.../infrastructure/web/PermissionInterceptor.java` | 方法级权限拦截器（HandlerMethod 读注解） | ✅ 可删 |
-| `backend/.../infrastructure/web/Sp8DemoController.java` | 教学 Controller（`/api/sp8/admin-only`，标 `@RequireRole("ADMIN")`） | ✅ 可删 |
-| `backend/.../infrastructure/web/Sp8InterceptorConfiguration.java` | 注册 PermissionInterceptor 到 `/api/**` | ✅ 可删 |
+| [`CachedBodyHttpServletRequest.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/CachedBodyHttpServletRequest.java) | 可重复读请求体的包装器 | ✅ 可删 |
+| [`BodyCachingFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/BodyCachingFilter.java) | 请求体日志 Filter（@Order(2)，**无条件启用**） | ✅ 可删 |
+| [`TokenAuthFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) | Token 鉴权 Filter（@Order(1)，**条件启用**，默认关闭） | ✅ 可删 |
+| [`RequireRole.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequireRole.java) | 方法级角色注解（供 Interceptor 读取） | ✅ 可删 |
+| [`PermissionInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/PermissionInterceptor.java) | 方法级权限拦截器（HandlerMethod 读注解） | ✅ 可删 |
+| [`Sp8DemoController.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8DemoController.java) | 教学 Controller（`/api/sp8/admin-only`，标 `@RequireRole("ADMIN")`） | ✅ 可删 |
+| [`Sp8InterceptorConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8InterceptorConfiguration.java) | 注册 PermissionInterceptor 到 `/api/**` | ✅ 可删 |
 
 > 成组删除（Filter 依赖 wrapper；Interceptor 依赖注解 + 教学 Controller）；生产如要保留鉴权，需把固定 token / 固定角色换成 JWT/会话校验并补单测。
 

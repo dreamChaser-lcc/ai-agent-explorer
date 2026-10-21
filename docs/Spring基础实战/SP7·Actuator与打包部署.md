@@ -241,13 +241,13 @@ GET /api/tasks   → 200
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 生产环境的 `/actuator` 该暴露哪些端点？
+1. 生产环境的 `/actuator` 该暴露哪些端点？<br>
    **参考答案**：至少 `health`（K8s 探针依赖它）；`info` 可选。**`env` / `heapdump` / `loggers` / `shutdown` 绝不开放公网**——`env` 泄漏配置（含密钥）、`heapdump` 含全部内存数据、`loggers` 可被恶意改级别刷爆日志、`shutdown` 直接关服务。本项目 dev 开 `env` 是学习观察窗（yml 有注释）。
-2. liveness 和 readiness 有什么区别？配反了会怎样？
+2. liveness 和 readiness 有什么区别？配反了会怎样？<br>
    **参考答案**：`liveness` 失败 → K8s **重启 Pod**；`readiness` 失败 → **摘掉流量**但不重启。配反的典型事故：把"DB 连接检查"放进 liveness → 数据库抖一下，所有 Pod 被反复重启（雪崩）。**依赖检查应放 readiness**（摘流量等恢复），liveness 只判断"进程是否还活着"。
-3. fat jar 为什么能 `java -jar` 直接跑？
+3. fat jar 为什么能 `java -jar` 直接跑？<br>
    **参考答案**：MANIFEST 的 `Main-Class` 指向 `JarLauncher`；它用**自定义 ClassLoader**加载 `BOOT-INF/lib` 里的嵌套 jar（普通 ClassLoader 不认识嵌套 jar），再启动 `BOOT-INF/classes` 里的主类。
-4. 打包时 `-Dmaven.test.skip=true` 和 `-DskipTests` 有什么区别？为什么本项目必须用前者？
+4. 打包时 `-Dmaven.test.skip=true` 和 `-DskipTests` 有什么区别？为什么本项目必须用前者？<br>
    **参考答案**：`-DskipTests` 只跳过**运行**测试，仍编译测试代码；`-Dmaven.test.skip=true` **连编译一起跳过**。本项目测试代码过时（场景⑥ 改了构造器/返回类型没同步），`-DskipTests` 会卡在 testCompile——**这是场景⑫ 测试体系的第一笔欠账**。
 
 ---

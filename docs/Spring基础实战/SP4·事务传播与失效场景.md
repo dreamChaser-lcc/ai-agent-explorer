@@ -151,13 +151,13 @@
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 外层 REQUIRED 调内层 REQUIRED，内层抛异常、外层 catch 住了——为什么最后全部回滚？
+1. 外层 REQUIRED 调内层 REQUIRED，内层抛异常、外层 catch 住了——为什么最后全部回滚？<br>
    **参考答案**：内层加入的是同一个事务；它抛异常时，Spring 的事务拦截器把**整个事务标记为 rollback-only**。外层 catch 只是拿到了异常对象，事务标记改不回来；提交时 Spring 发现"标记为只能回滚"→ 抛 `UnexpectedRollbackException` → 全部回滚。**REQUIRED 下内外层是一条命。**
-2. 什么场景该用 REQUIRES_NEW？
+2. 什么场景该用 REQUIRES_NEW？<br>
    **参考答案**：**子操作失败不应拖垮主流程**的场景。典型：写审计日志 / 发通知 / 记录失败补偿信息——主业务回滚了，日志必须留下（否则"为什么失败"都没记录）。场景⑤ 的审计如果和业务同事务，业务回滚时审计也会丢。
-3. 事务里调了一次 6 秒的 HTTP 接口，会有什么后果？
+3. 事务里调了一次 6 秒的 HTTP 接口，会有什么后果？<br>
    **参考答案**：数据库连接被占用 6 秒（连接池紧张、并发下排队）、写锁持有 6 秒（其他请求阻塞）、长事务导致日志膨胀。**事务内不做网络调用**；把调用挪到事务外，或先取数据再短事务落库。
-4. `@Transactional` 标注的私有方法为什么会失效？
+4. `@Transactional` 标注的私有方法为什么会失效？<br>
    **参考答案**：Spring 事务靠**代理**实现，CGLIB 生成的子类**无法覆写私有方法**（私有方法不参与多态），增强逻辑挂不上去。改 public；或者把事务边界移到调用方。
 
 ---
@@ -166,8 +166,8 @@
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/.../infrastructure/tx/TransactionDemoService.java` | 传播行为对比（REQUIRED / REQUIRES_NEW） | ✅ 可删 |
-| `backend/.../infrastructure/tx/TransactionDemoRunner.java` | 启动后自动建表 + 跑两组对比 + 打印结果 | ✅ 可删 |
+| [`TransactionDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoService.java) | 传播行为对比（REQUIRED / REQUIRES_NEW） | ✅ 可删 |
+| [`TransactionDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoRunner.java) | 启动后自动建表 + 跑两组对比 + 打印结果 | ✅ 可删 |
 
 > 成组删除（Runner 引用 Service）。
 

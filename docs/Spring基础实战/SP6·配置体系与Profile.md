@@ -174,13 +174,13 @@ spring:
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 同一个 key 在 主 yml / dev yml / 环境变量 都写了，谁生效？
+1. 同一个 key 在 主 yml / dev yml / 环境变量 都写了，谁生效？<br>
    **参考答案**：**环境变量**（优先级 3）> dev yml（4）> 主 yml（5）。实测三幕已证明（`from-env` 赢 `from-dev-yml`）。
-2. 为什么环境变量名要写成 `SP6_DEMO_NAME` 这种全大写下划线？
+2. 为什么环境变量名要写成 `SP6_DEMO_NAME` 这种全大写下划线？<br>
    **参考答案**：操作系统环境变量只能用大写字母+下划线（惯例 + 兼容性）；Spring 的松散绑定会自动把 `sp6.demo.name` 映射到 `SP6_DEMO_NAME`（点/短横线 → 下划线，转大写）。
-3. `@Value` 和 `@ConfigurationProperties` 怎么选？
+3. `@Value` 和 `@ConfigurationProperties` 怎么选？<br>
    **参考答案**：**成组配置**（一个前缀下一组相关项）用 `@ConfigurationProperties`——支持松散绑定、集合/Map/嵌套对象、校验、构造器绑定；**单个值**（如一个开关）用 `@Value` 更轻。
-4. 生产环境要改一个配置，不想重新打包，有几种办法？
+4. 生产环境要改一个配置，不想重新打包，有几种办法？<br>
    **参考答案**：① 环境变量（容器/服务器设置）；② 命令行参数（启动脚本加 `--key=value`）；③ 配置中心（Nacos/Config Server，改完刷新）。三者优先级都高于 jar 内 yml——**"配置外置"正是靠优先级设计实现的**。
 
 ---
@@ -189,9 +189,9 @@ spring:
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/.../infrastructure/config/Sp6DemoProperties.java` | `sp6.demo.*` 配置属性（name/source/tags） | ✅ 可删 |
-| `backend/.../infrastructure/config/Sp6DemoConfiguration.java` | 启用配置绑定 | ✅ 可删 |
-| `backend/.../infrastructure/config/Sp6DemoRunner.java` | 启动后打印最终取值 | ✅ 可删 |
+| [`Sp6DemoProperties.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoProperties.java) | `sp6.demo.*` 配置属性（name/source/tags） | ✅ 可删 |
+| [`Sp6DemoConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoConfiguration.java) | 启用配置绑定 | ✅ 可删 |
+| [`Sp6DemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoRunner.java) | 启动后打印最终取值 | ✅ 可删 |
 | `application.yml` 的「SP6 教学演示」段 | 主 yml 里 `from-main-yml` | ✅ 可删（有注释标记） |
 | `application-dev.yml` 的「SP6 教学演示」段 | dev yml 里 `from-dev-yml` | ✅ 可删（有注释标记） |
 

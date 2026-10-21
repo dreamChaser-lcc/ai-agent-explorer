@@ -141,9 +141,9 @@ Filter 进入 → Interceptor.preHandle → Controller → Interceptor.postHandl
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/.../infrastructure/web/RequestTraceFilter.java` | 请求追踪 Filter（Servlet 层，测全链路耗时） | ✅ 可删 |
-| `backend/.../infrastructure/web/RequestTraceInterceptor.java` | 请求追踪 Interceptor（preHandle/postHandle/afterCompletion 三时机日志） | ✅ 可删 |
-| `backend/.../infrastructure/web/WebRequestTraceConfiguration.java` | 注册 Interceptor 到 `/api/**` | ✅ 可删 |
+| [`RequestTraceFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceFilter.java) | 请求追踪 Filter（Servlet 层，测全链路耗时） | ✅ 可删 |
+| [`RequestTraceInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceInterceptor.java) | 请求追踪 Interceptor（preHandle/postHandle/afterCompletion 三时机日志） | ✅ 可删 |
+| [`WebRequestTraceConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/WebRequestTraceConfiguration.java) | 注册 Interceptor 到 `/api/**` | ✅ 可删 |
 
 > 成组删除：`WebRequestTraceConfiguration` 引用 `RequestTraceInterceptor`，单独删会编译失败。
 
@@ -163,11 +163,11 @@ Filter 进入 → Interceptor.preHandle → Controller → Interceptor.postHandl
 
 ## 八、思考题（自查 + 参考答案）
 
-1. 登录校验应该放 Filter 还是 Interceptor？为什么 Filter 拿不到"目标方法"会成为问题？
+1. 登录校验应该放 Filter 还是 Interceptor？为什么 Filter 拿不到"目标方法"会成为问题？<br>
    **参考答案**：放 **Interceptor**。因为细粒度权限需要知道"**要执行哪个 Controller 方法**"（例：方法上标了 `@RequireRole("ADMIN")`，或按方法做审计/限流），而 Filter 只知道 URL——参数化路径（`/tasks/{id}`）难以精确对应到方法。本次实验实测：Interceptor 能打印 `ResearchTaskController#listTasks`，Filter 拿不到。**但全局性拦截**（非法 IP、全站未登录）用 Filter 更早、更省。
-2. 一个请求在 Controller 里抛了异常：preHandle / postHandle / afterCompletion 哪个执行了、哪个没执行？
+2. 一个请求在 Controller 里抛了异常：preHandle / postHandle / afterCompletion 哪个执行了、哪个没执行？<br>
    **参考答案**：`preHandle` 执行了；**`postHandle` 不执行**（只有 Controller 正常返回才走）；**`afterCompletion` 会执行**，且入参能拿到异常。**结论：资源清理、计时、日志收尾必须放 afterCompletion**。
-3. 想把请求体（JSON）在进入 Controller 前脱敏，为什么必须在 Filter 层做（提示：流只能读一次）？
+3. 想把请求体（JSON）在进入 Controller 前脱敏，为什么必须在 Filter 层做（提示：流只能读一次）？<br>
    **参考答案**：Servlet 的 `request.getInputStream()` 是**一次性流**，读完即空——Controller 的 `@RequestBody` 也要读它。在 Filter 里直接读会把流耗掉，Controller 拿不到 body。正确做法：**包装 request**（`HttpServletRequestWrapper` 子类，构造时缓存 body 字节，覆写 `getInputStream()` 返回可重复读的流），再把包装对象传给 `chain.doFilter`。这也是"改报文只能在 Filter 做"的由来。
 4. 多个 Interceptor 时顺序怎么定？（提示：`registry.addInterceptor` 的注册顺序 + `@Order`）
    **参考答案**：按 `registry.addInterceptor(...)` 的**注册顺序**执行：`preHandle` **正序**，`postHandle` / `afterCompletion` **逆序**（像栈）。也可以用 `registry.addInterceptor(x).order(n)` 显式指定；跨配置类的先后可用 `@Order`。**设计建议**：与业务无关的（traceId）放最外层，权限放中间，业务日志放最内层。

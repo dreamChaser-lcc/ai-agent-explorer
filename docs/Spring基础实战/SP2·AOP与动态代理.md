@@ -1,4 +1,4 @@
-﻿# SP2 · AOP 与动态代理
+# SP2 · AOP 与动态代理
 
 > **课程**：Spring 基础实战 · 模块一（2026-10-21）
 > **已会**：场景⑤ 审计切面——标个注解，方法前后自动记审计日志，业务代码零改动
@@ -153,10 +153,10 @@ public class OrderService {
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| `backend/.../infrastructure/aop/TraceLog.java` | 教学注解（仿 @AuditLog，但不写库，只打日志） | ✅ 可删 |
-| `backend/.../infrastructure/aop/TraceLogAspect.java` | @Around 切面（前刀/后刀日志，证明切面是否拦到） | ✅ 可删 |
-| `backend/.../infrastructure/aop/AopDemoService.java` | 自调用 vs 代理调用对比（`@Lazy` 自注入代理） | ✅ 可删 |
-| `backend/.../infrastructure/aop/AopDemoRunner.java` | 启动后自动执行一次实验（ApplicationRunner） | ✅ 可删 |
+| [`TraceLog.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLog.java) | 教学注解（仿 @AuditLog，但不写库，只打日志） | ✅ 可删 |
+| [`TraceLogAspect.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLogAspect.java) | @Around 切面（前刀/后刀日志，证明切面是否拦到） | ✅ 可删 |
+| [`AopDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoService.java) | 自调用 vs 代理调用对比（`@Lazy` 自注入代理） | ✅ 可删 |
+| [`AopDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoRunner.java) | 启动后自动执行一次实验（ApplicationRunner） | ✅ 可删 |
 
 > 删除时必须**成组删**：`AopDemoRunner` 引用 `AopDemoService`，`AopDemoService` 引用 `TraceLog`，`TraceLogAspect` 依赖 `TraceLog`——单独删一个会编译失败。
 
@@ -176,11 +176,11 @@ public class OrderService {
 
 ## 七、思考题（自查 + 参考答案）
 
-1. 场景⑤ 的 `AuditAspect` 用 `@Order(1)` 包在事务**外层**——如果放在事务内层，审计日志会记录到什么"结局"？哪个更符合审计需求？
+1. 场景⑤ 的 `AuditAspect` 用 `@Order(1)` 包在事务**外层**——如果放在事务内层，审计日志会记录到什么"结局"？哪个更符合审计需求？<br>
    **参考答案**：放**内层**时，审计在事务提交**之前**执行——如果事务随后回滚，审计已经记了"成功"，而数据库实际回滚了 → **假成功记录**。放**外层**（`@Order` 数字更小）记录的是事务的最终结局（提交成功 / 回滚失败），符合审计"如实记录最终结果"的需求。
-2. `@Around` 里忘写 `joinPoint.proceed()` 会发生什么？忘写 `return result` 会发生什么？
+2. `@Around` 里忘写 `joinPoint.proceed()` 会发生什么？忘写 `return result` 会发生什么？<br>
    **参考答案**：忘写 `proceed()` → **目标方法根本不执行**，业务逻辑被整个吞掉（调用方拿到 null）；忘写 `return result` → 目标方法执行了但**返回值丢失**（调用方收到 null，可能 NPE）。两者都是"静默错误"——日志看着正常、结果不对，最难排查。
-3. 同一个类里，`methodA()` 调 `methodB()`，methodB 标了 `@Cacheable`——缓存生效吗？三种修复方式分别是什么？
+3. 同一个类里，`methodA()` 调 `methodB()`，methodB 标了 `@Cacheable`——缓存生效吗？三种修复方式分别是什么？<br>
    **参考答案**：**不生效**（`this.methodB()` 绕过代理，与本次实验验证的自调用失效同源）。三种修复：① 把 methodB 拆到另一个 bean（最干净）；② `@Lazy` 注入自身代理，用 `self.methodB()`；③ `AopContext.currentProxy().methodB()`（需开启 `exposeProxy=true`，较繁琐）。
 4. 为什么 Spring Boot 2.x 之后默认改用 CGLIB？（提示：大家都不爱写接口了）
    **参考答案**：JDK 动态代理**要求目标类实现接口**；现代项目流行"直接注入实现类、不写接口"。CGLIB 用**子类继承**的方式代理，不要求接口——Spring Boot 2.x 起 `spring.aop.proxy-target-class=true` 成为默认。代价：final 类和 final 方法无法代理。
