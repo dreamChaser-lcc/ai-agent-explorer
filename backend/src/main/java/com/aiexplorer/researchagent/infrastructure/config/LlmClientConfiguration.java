@@ -85,6 +85,6 @@ public class LlmClientConfiguration {
                 ? llmProperties.timeoutSeconds() : DEFAULT_TIMEOUT_SECONDS;
         int maxRetries = llmProperties.maxRetries() >= 0
                 ? llmProperties.maxRetries() : DEFAULT_MAX_RETRIES;
-        return new LlmCallGuard(client, timeoutSeconds, maxRetries);
+        return new LlmCallGuard(llmClient, timeoutSeconds, maxRetries);
     }
 }
