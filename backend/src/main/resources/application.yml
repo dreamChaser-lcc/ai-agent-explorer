@@ -98,9 +98,35 @@ app:
     pause-at-step-boundary-only: ${APP_PAUSE_AT_STEP_BOUNDARY_ONLY:true}
   llm:
     provider: ${APP_LLM_PROVIDER:openai}
-    chat-model: ${APP_LLM_CHAT_MODEL:gpt-4o-mini}
+    # 场景⑧：OpenAI 兼容接口地址（中转站 / 官方 DeepSeek 均可用，走 /v1/chat/completions）
+    base-url: ${APP_LLM_BASE_URL:https://agentrouter.org/v1}
+    # API Key 只从环境变量注入——绝不写进仓库（git 会记录明文）
+    api-key: ${OPENAI_API_KEY:}
+    chat-model: ${APP_LLM_CHAT_MODEL:deepseek-v4-flash}
+    # ★ 中转站网关会做客户端指纹检测：默认 Java UA 会被 401 unauthorized client，
+    #   必须伪装成官方客户端（场景⑧ 实测结论，改这行前先看讲义排障链）
+    user-agent: ${APP_LLM_USER_AGENT:claude-cli/2.0.0 (external, cli)}
     temperature: ${APP_LLM_TEMPERATURE:0.2}
     max-steps: ${APP_LLM_MAX_STEPS:12}
+    # 治理三件套参数：业务级超时 + 最大重试次数（指数退避）
+    timeout-seconds: ${APP_LLM_TIMEOUT_SECONDS:20}
+    max-retries: ${APP_LLM_MAX_RETRIES:2}
+    # 模拟客户端开关：本地验证"超时 / 失败 / 降级"时置 true（真实下游不会配合你变慢/报错）
+    simulated: ${APP_LLM_SIMULATED:false}
+    simulate-mode: ${APP_LLM_SIMULATE_MODE:NORMAL}
+    # 客户端实现：langchain4j（默认，框架版）| http（手写 HttpClient，代理需代码层隔离时备选）
+    client-impl: ${APP_LLM_CLIENT_IMPL:langchain4j}
+    # 搜索提供方：llm（默认，未接 API 时由 LLM 知识生成资料，来源标记 llm://knowledge/）| api（预留）
+    search-provider: ${APP_LLM_SEARCH_PROVIDER:llm}
+    # 本机代理（两种实现方式不同，别混用）：
+    #   ① client-impl=http → 用下面两行（代码层代理，只作用于 LLM，实测生效）
+    #   ② client-impl=langchain4j → 用 JAVA_TOOL_OPTIONS 设 JVM 代理，且必须排除内网：
+    #      -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897
+    #      -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7897
+    #      -Dhttp.nonProxyHosts=localhost|127.*|192.168.*
+    #      ★ 不排除内网会把 Nacos(192.168.157.129) 一起代理掉，应用直接启动失败（实测踩过）
+    proxy-host: ${APP_LLM_PROXY_HOST:}
+    proxy-port: ${APP_LLM_PROXY_PORT:0}
 
 langchain4j:
   open-ai:

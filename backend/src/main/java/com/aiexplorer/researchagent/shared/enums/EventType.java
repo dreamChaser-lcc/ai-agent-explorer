@@ -14,5 +14,7 @@ public enum EventType {
     STEP_STARTED,
     STEP_FINISHED,
     STEP_FAILED,
-    REPORT_GENERATED
+    REPORT_GENERATED,
+    /** 场景⑧：LLM 下游不可用，计划生成已降级为内置模板（事后可查降级原因）。 */
+    LLM_DEGRADED
 }

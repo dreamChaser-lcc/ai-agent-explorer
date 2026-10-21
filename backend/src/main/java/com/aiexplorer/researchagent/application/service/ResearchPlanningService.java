@@ -19,6 +19,7 @@ import com.aiexplorer.researchagent.shared.enums.TaskStatus;
 import com.aiexplorer.researchagent.shared.exception.TaskNotFoundException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -51,6 +52,7 @@ public class ResearchPlanningService {
     private final TaskEventService taskEventService;                       // 事件记录 + SSE 广播
     private final TaskProgressStreamService taskProgressStreamService;     // SSE 进度推送
     private final ObjectMapper objectMapper;                               // JSON 序列化工具（Spring 自动注入）
+    private final LlmPlanGenerator llmPlanGenerator;                       // 场景⑧：LLM 计划生成（含超时/重试/降级）
 
     public ResearchPlanningService(
             ResearchTaskRepository researchTaskRepository,
@@ -59,7 +61,8 @@ public class ResearchPlanningService {
             HumanConfirmationRepository humanConfirmationRepository,
             TaskEventService taskEventService,
             TaskProgressStreamService taskProgressStreamService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            LlmPlanGenerator llmPlanGenerator) {
         this.researchTaskRepository = researchTaskRepository;
         this.researchPlanRepository = researchPlanRepository;
         this.researchStepRepository = researchStepRepository;
@@ -67,6 +70,7 @@ public class ResearchPlanningService {
         this.taskEventService = taskEventService;
         this.taskProgressStreamService = taskProgressStreamService;
         this.objectMapper = objectMapper;
+        this.llmPlanGenerator = llmPlanGenerator;
     }
 
     /**
@@ -74,11 +78,13 @@ public class ResearchPlanningService {
      *
      * 执行流程（整个方法在一个数据库事务中）：
      *   1. 加载任务实体（找不到抛 TaskNotFoundException）
-     *   2. 创建 ResearchPlanEntity（版本=1，状态=GENERATED）
-     *   3. 生成 5 个 ResearchStepEntity（SEARCH → FETCH → SUMMARIZE → CITATION_EXTRACT → REPORT）
-     *   4. 创建 HumanConfirmationEntity（等待用户确认计划）
-     *   5. 更新任务状态 → WAITING_FOR_CONFIRMATION
-     *   6. 记录事件 + 推送 SSE
+     *   2. 生成计划草稿：优先 LLM（超时/重试/降级由 LlmCallGuard + LlmPlanGenerator 治理），
+     *      LLM 不可用时自动降级为内置 5 步模板（场景⑧）
+     *   3. 创建 ResearchPlanEntity（版本=1，状态=GENERATED，plannerModel 记录来源）
+     *   4. 按草稿生成 ResearchStepEntity（LLM 版本或模板版本）
+     *   5. 创建 HumanConfirmationEntity（等待用户确认计划）
+     *   6. 更新任务状态 → WAITING_FOR_CONFIRMATION
+     *   7. 记录事件（降级时额外记 LLM_DEGRADED）+ 推送 SSE
      *
      * @param taskId 任务 UUID
      * @return 保存后的计划实体
@@ -89,30 +95,34 @@ public class ResearchPlanningService {
         ResearchTaskEntity task = researchTaskRepository.findById(taskId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
 
-        // 2. 创建计划实体
+        // 2. 生成计划草稿（场景⑧：LLM 优先，失败降级模板——绝不让用户"任务建不出来"）
+        PlanDraft planDraft = llmPlanGenerator.generate(task.getGoal());
+
+        // 3. 创建计划实体
         ResearchPlanEntity plan = new ResearchPlanEntity();
         plan.setTaskId(taskId);                            // 关联任务
         plan.setVersion(1);                                // 首版计划
-        plan.setPlanSummary("系统已根据研究目标生成初版研究计划，等待用户确认后继续执行。");
+        plan.setPlanSummary(planDraft.summary());           // 摘要来自 LLM 或降级模板
         plan.setPlanObjective(task.getGoal());              // 研究目标从任务中复制
         plan.setStatus(PlanStatus.GENERATED);               // 计划状态：已生成
         plan.setConfirmationStatus(ConfirmationStatus.PENDING); // 等待确认
-        plan.setPlannerModel("template-planner");           // 当前使用模板规划器
-        plan.setPlannerPromptSnapshot("基于当前 MVP 阶段使用模板化规划逻辑生成研究计划。");
+        plan.setPlannerModel(planDraft.plannerModel());     // 计划来源：llm:模型名 / template-fallback
+        plan.setPlannerPromptSnapshot(planDraft.promptSnapshot()); // 提示词快照（复盘用）
         // 原始计划载荷：将步骤定义序列化为 JSON 存储
         plan.setRawPlanPayload(objectMapper.valueToTree(Map.of(
                 "taskId", taskId,
                 "goal", task.getGoal(),
-                "steps", buildStepDefinitions(task.getGoal())
+                "degraded", planDraft.degraded(),
+                "steps", buildStepDefinitions(planDraft.steps())
         )));
 
         ResearchPlanEntity savedPlan = researchPlanRepository.save(plan);
 
-        // 3. 生成 5 个固定步骤，持久化到数据库
-        List<ResearchStepEntity> steps = createSteps(taskId, savedPlan.getId(), task.getGoal());
+        // 4. 按草稿生成步骤，持久化到数据库（LLM 版步骤数可能不是 5 个）
+        List<ResearchStepEntity> steps = createSteps(taskId, savedPlan.getId(), task.getGoal(), planDraft.steps());
         researchStepRepository.saveAll(steps); // 批量保存
 
-        // 4. 创建人工确认记录（等待用户在页面上点击"确认"或"拒绝"）
+        // 5. 创建人工确认记录（等待用户在页面上点击"确认"或"拒绝"）
         HumanConfirmationEntity confirmation = new HumanConfirmationEntity();
         confirmation.setTaskId(taskId);
         confirmation.setConfirmationType(ConfirmationType.PLAN_APPROVAL); // 类型：计划审批
@@ -122,42 +132,64 @@ public class ResearchPlanningService {
         confirmation.setRequestedBy("system");                            // 系统发起
         humanConfirmationRepository.save(confirmation);
 
-        // 5. 更新任务状态
+        // 6. 更新任务状态
         task.setStatus(TaskStatus.WAITING_FOR_CONFIRMATION); // 等待用户确认
         task.setCurrentStage(TaskStage.PLANNING);             // 仍在规划阶段
         task.setRequiresConfirmation(true);                   // 标记需要确认
         researchTaskRepository.save(task);
 
-        // 6. 记录事件（事件日志 + SSE 推送）
+        // 7. 记录事件（事件日志 + SSE 推送）
+        // 降级留痕：LLM 不可用时"发生了什么"必须可追溯（沿用场景⑤的审计思维）
+        if (planDraft.degraded()) {
+            taskEventService.recordSystemEvent(taskId, null, EventType.LLM_DEGRADED,
+                    "LLM 计划生成失败，已降级为模板计划。原因：" + planDraft.degradedReason());
+        }
         taskEventService.recordSystemEvent(taskId, null, EventType.PLAN_GENERATED,
-                "已生成研究计划并等待人工确认。");
+                planDraft.degraded()
+                        ? "已生成研究计划（LLM 不可用，模板降级）并等待人工确认。"
+                        : "已根据 LLM 生成研究计划并等待人工确认。");
         taskProgressStreamService.publish(taskId, "plan-generated", Map.of(
                 "taskId", taskId,
                 "status", TaskStatus.WAITING_FOR_CONFIRMATION.name(),
-                "message", "研究计划已生成，等待人工确认"
+                "plannerModel", planDraft.plannerModel(),
+                "degraded", planDraft.degraded(),
+                "message", planDraft.degraded()
+                        ? "研究计划已生成（LLM 不可用，已降级为模板），等待人工确认"
+                        : "研究计划已生成，等待人工确认"
         ));
         return savedPlan;
     }
 
     /**
-     * 生成当前 MVP 所需的固定 5 步骤集合。
+     * 按计划草稿生成步骤实体集合。
      *
-     * 后续可替换为真正的 LLM 动态规划：先调用 LangChain4j 让 LLM 分析研究目标，
-     * 然后生成定制化的步骤列表。
+     * 历史沿革：原实现是写死的固定 5 步（模板规划）。
+     * 场景⑧ 已接入 LLM 动态规划——步骤来自 LLM（通常 3-5 个）；
+     * LLM 不可用时降级回模板，两种来源在此汇合，统一转成 ResearchStepEntity。
      */
-    private List<ResearchStepEntity> createSteps(UUID taskId, UUID planId, String goal) {
-        return List.of(
-                buildStep(taskId, planId, 1, StepType.SEARCH, "搜索候选资料",
-                        "围绕研究目标检索候选资料来源", goal),
-                buildStep(taskId, planId, 2, StepType.FETCH, "抓取资料正文",
-                        "抓取候选来源的正文内容", goal),
-                buildStep(taskId, planId, 3, StepType.SUMMARIZE, "总结研究发现",
-                        "对抓取内容进行总结归纳", goal),
-                buildStep(taskId, planId, 4, StepType.CITATION_EXTRACT, "提取引用信息",
-                        "整理用于报告展示的引用来源", goal),
-                buildStep(taskId, planId, 5, StepType.REPORT, "生成研究报告",
-                        "汇总研究结果并生成最终报告", goal)
-        );
+    private List<ResearchStepEntity> createSteps(
+            UUID taskId, UUID planId, String goal, List<PlanDraft.StepDraft> stepDrafts) {
+        List<ResearchStepEntity> stepEntities = new ArrayList<>();
+        for (PlanDraft.StepDraft stepDraft : stepDrafts) {
+            stepEntities.add(buildStep(taskId, planId, stepDraft.stepNo(),
+                    resolveStepType(stepDraft.stepType()),
+                    stepDraft.title(), stepDraft.description(), goal));
+        }
+        return stepEntities;
+    }
+
+    /**
+     * 步骤类型字符串 → StepType 枚举。
+     *
+     * 草稿层已做白名单过滤，这里再兜底一次：不认识的类型一律按 REPORT 处理，
+     * 避免一个脏字段导致整份计划落库失败。
+     */
+    private StepType resolveStepType(String stepTypeText) {
+        try {
+            return StepType.valueOf(stepTypeText);
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            return StepType.REPORT;
+        }
     }
 
     /**
@@ -190,20 +222,20 @@ public class ResearchPlanningService {
     /**
      * 构建序列化后的步骤定义列表，存入 rawPlanPayload 字段。
      * 用于保存计划的"原始内容"，方便后续复盘和调试。
+     *
+     * 场景⑧：定义不再写死，而是来自计划草稿（LLM 或降级模板），
+     * 这样 rawPlanPayload 记录的是"这次真实用到的步骤"，可直接对比 LLM 版与模板版差异。
      */
-    private List<Map<String, Object>> buildStepDefinitions(String goal) {
-        return List.of(
-                Map.of("stepNo", 1, "type", StepType.SEARCH.name(),
-                        "title", "搜索候选资料", "goal", goal),
-                Map.of("stepNo", 2, "type", StepType.FETCH.name(),
-                        "title", "抓取资料正文", "goal", goal),
-                Map.of("stepNo", 3, "type", StepType.SUMMARIZE.name(),
-                        "title", "总结研究发现", "goal", goal),
-                Map.of("stepNo", 4, "type", StepType.CITATION_EXTRACT.name(),
-                        "title", "提取引用信息", "goal", goal),
-                Map.of("stepNo", 5, "type", StepType.REPORT.name(),
-                        "title", "生成研究报告", "goal", goal)
-        );
+    private List<Map<String, Object>> buildStepDefinitions(List<PlanDraft.StepDraft> stepDrafts) {
+        List<Map<String, Object>> stepDefinitions = new ArrayList<>();
+        for (PlanDraft.StepDraft stepDraft : stepDrafts) {
+            stepDefinitions.add(Map.of(
+                    "stepNo", stepDraft.stepNo(),
+                    "type", stepDraft.stepType(),
+                    "title", stepDraft.title(),
+                    "description", stepDraft.description()));
+        }
+        return stepDefinitions;
     }
 
 }
