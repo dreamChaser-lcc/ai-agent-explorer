@@ -189,9 +189,9 @@ spring:
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`Sp6DemoProperties.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoProperties.java) | `sp6.demo.*` 配置属性（name/source/tags） | ✅ 可删 |
-| [`Sp6DemoConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoConfiguration.java) | 启用配置绑定 | ✅ 可删 |
-| [`Sp6DemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoRunner.java) | 启动后打印最终取值 | ✅ 可删 |
+| [`Sp6DemoProperties.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoProperties.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoProperties.java) | `sp6.demo.*` 配置属性（name/source/tags） | ✅ 可删 |
+| [`Sp6DemoConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoConfiguration.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoConfiguration.java) | 启用配置绑定 | ✅ 可删 |
+| [`Sp6DemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoRunner.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/Sp6DemoRunner.java) | 启动后打印最终取值 | ✅ 可删 |
 | `application.yml` 的「SP6 教学演示」段 | 主 yml 里 `from-main-yml` | ✅ 可删（有注释标记） |
 | `application-dev.yml` 的「SP6 教学演示」段 | dev yml 里 `from-dev-yml` | ✅ 可删（有注释标记） |
 

@@ -141,9 +141,9 @@ Filter 进入 → Interceptor.preHandle → Controller → Interceptor.postHandl
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`RequestTraceFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceFilter.java) | 请求追踪 Filter（Servlet 层，测全链路耗时） | ✅ 可删 |
-| [`RequestTraceInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceInterceptor.java) | 请求追踪 Interceptor（preHandle/postHandle/afterCompletion 三时机日志） | ✅ 可删 |
-| [`WebRequestTraceConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/WebRequestTraceConfiguration.java) | 注册 Interceptor 到 `/api/**` | ✅ 可删 |
+| [`RequestTraceFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceFilter.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceFilter.java) | 请求追踪 Filter（Servlet 层，测全链路耗时） | ✅ 可删 |
+| [`RequestTraceInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceInterceptor.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequestTraceInterceptor.java) | 请求追踪 Interceptor（preHandle/postHandle/afterCompletion 三时机日志） | ✅ 可删 |
+| [`WebRequestTraceConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/WebRequestTraceConfiguration.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/WebRequestTraceConfiguration.java) | 注册 Interceptor 到 `/api/**` | ✅ 可删 |
 
 > 成组删除：`WebRequestTraceConfiguration` 引用 `RequestTraceInterceptor`，单独删会编译失败。
 

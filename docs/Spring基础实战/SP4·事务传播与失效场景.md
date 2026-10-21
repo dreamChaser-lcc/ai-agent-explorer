@@ -166,8 +166,8 @@
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`TransactionDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoService.java) | 传播行为对比（REQUIRED / REQUIRES_NEW） | ✅ 可删 |
-| [`TransactionDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoRunner.java) | 启动后自动建表 + 跑两组对比 + 打印结果 | ✅ 可删 |
+| [`TransactionDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoService.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoService.java) | 传播行为对比（REQUIRED / REQUIRES_NEW） | ✅ 可删 |
+| [`TransactionDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoRunner.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/tx/TransactionDemoRunner.java) | 启动后自动建表 + 跑两组对比 + 打印结果 | ✅ 可删 |
 
 > 成组删除（Runner 引用 Service）。
 

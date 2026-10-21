@@ -227,7 +227,7 @@ NoUniqueBeanDefinitionException:
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`BeanLifecycleDemo.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) | 生命周期五阶段日志演示（构造器/@PostConstruct/@PreDestroy） | ✅ 可删（纯教学） |
+| [`BeanLifecycleDemo.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) | 生命周期五阶段日志演示（构造器/@PostConstruct/@PreDestroy） | ✅ 可删（纯教学） |
 
 > 实验②③ 的临时类（`CycleA`/`CycleB`、第二个 `LlmClient` bean）**已全部删除恢复**，不在代码库中。
 

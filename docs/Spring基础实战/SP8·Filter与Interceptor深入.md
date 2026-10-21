@@ -323,13 +323,13 @@ POST_OK status=WAITING_FOR_CONFIRMATION
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`CachedBodyHttpServletRequest.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/CachedBodyHttpServletRequest.java) | 可重复读请求体的包装器 | ✅ 可删 |
-| [`BodyCachingFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/BodyCachingFilter.java) | 请求体日志 Filter（@Order(2)，**无条件启用**） | ✅ 可删 |
-| [`TokenAuthFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) | Token 鉴权 Filter（@Order(1)，**条件启用**，默认关闭） | ✅ 可删 |
-| [`RequireRole.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequireRole.java) | 方法级角色注解（供 Interceptor 读取） | ✅ 可删 |
-| [`PermissionInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/PermissionInterceptor.java) | 方法级权限拦截器（HandlerMethod 读注解） | ✅ 可删 |
-| [`Sp8DemoController.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8DemoController.java) | 教学 Controller（`/api/sp8/admin-only`，标 `@RequireRole("ADMIN")`） | ✅ 可删 |
-| [`Sp8InterceptorConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8InterceptorConfiguration.java) | 注册 PermissionInterceptor 到 `/api/**` | ✅ 可删 |
+| [`CachedBodyHttpServletRequest.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/CachedBodyHttpServletRequest.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/CachedBodyHttpServletRequest.java) | 可重复读请求体的包装器 | ✅ 可删 |
+| [`BodyCachingFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/BodyCachingFilter.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/BodyCachingFilter.java) | 请求体日志 Filter（@Order(2)，**无条件启用**） | ✅ 可删 |
+| [`TokenAuthFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) | Token 鉴权 Filter（@Order(1)，**条件启用**，默认关闭） | ✅ 可删 |
+| [`RequireRole.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequireRole.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/RequireRole.java) | 方法级角色注解（供 Interceptor 读取） | ✅ 可删 |
+| [`PermissionInterceptor.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/PermissionInterceptor.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/PermissionInterceptor.java) | 方法级权限拦截器（HandlerMethod 读注解） | ✅ 可删 |
+| [`Sp8DemoController.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8DemoController.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8DemoController.java) | 教学 Controller（`/api/sp8/admin-only`，标 `@RequireRole("ADMIN")`） | ✅ 可删 |
+| [`Sp8InterceptorConfiguration.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8InterceptorConfiguration.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/Sp8InterceptorConfiguration.java) | 注册 PermissionInterceptor 到 `/api/**` | ✅ 可删 |
 
 > 成组删除（Filter 依赖 wrapper；Interceptor 依赖注解 + 教学 Controller）；生产如要保留鉴权，需把固定 token / 固定角色换成 JWT/会话校验并补单测。
 

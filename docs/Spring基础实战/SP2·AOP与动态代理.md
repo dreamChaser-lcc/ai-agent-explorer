@@ -153,10 +153,10 @@ public class OrderService {
 
 | 文件 | 作用 | 是否可删 |
 |---|---|---|
-| [`TraceLog.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLog.java) | 教学注解（仿 @AuditLog，但不写库，只打日志） | ✅ 可删 |
-| [`TraceLogAspect.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLogAspect.java) | @Around 切面（前刀/后刀日志，证明切面是否拦到） | ✅ 可删 |
-| [`AopDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoService.java) | 自调用 vs 代理调用对比（`@Lazy` 自注入代理） | ✅ 可删 |
-| [`AopDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoRunner.java) | 启动后自动执行一次实验（ApplicationRunner） | ✅ 可删 |
+| [`TraceLog.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLog.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLog.java) | 教学注解（仿 @AuditLog，但不写库，只打日志） | ✅ 可删 |
+| [`TraceLogAspect.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLogAspect.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/TraceLogAspect.java) | @Around 切面（前刀/后刀日志，证明切面是否拦到） | ✅ 可删 |
+| [`AopDemoService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoService.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoService.java) | 自调用 vs 代理调用对比（`@Lazy` 自注入代理） | ✅ 可删 |
+| [`AopDemoRunner.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoRunner.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AopDemoRunner.java) | 启动后自动执行一次实验（ApplicationRunner） | ✅ 可删 |
 
 > 删除时必须**成组删**：`AopDemoRunner` 引用 `AopDemoService`，`AopDemoService` 引用 `TraceLog`，`TraceLogAspect` 依赖 `TraceLog`——单独删一个会编译失败。
 
