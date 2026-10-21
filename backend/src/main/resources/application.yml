@@ -135,3 +135,11 @@ langchain4j:
       model-name: ${OPENAI_MODEL_NAME:gpt-4o-mini}
       log-requests: ${OPENAI_LOG_REQUESTS:false}
       log-responses: ${OPENAI_LOG_RESPONSES:false}
+
+# ===== SP6 教学演示：配置优先级实验（可删）=====
+sp6:
+  demo:
+    name: from-main-yml
+    source: main-yml
+    tags:
+      - main

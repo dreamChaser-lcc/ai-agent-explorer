@@ -25,3 +25,11 @@ langchain4j:
   open-ai:
     chat-model:
       api-key: ${OPENAI_API_KEY:dev-placeholder-key}
+
+# ===== SP6 教学演示：dev 覆盖（可删）=====
+sp6:
+  demo:
+    name: from-dev-yml
+    source: dev-yml
+    tags:
+      - dev
