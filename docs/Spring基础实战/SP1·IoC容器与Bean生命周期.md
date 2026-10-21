@@ -128,7 +128,49 @@ Ctrl+C 关闭
 
 **注意②去哪了**：演示 Bean 用的是构造器注入（ObjectMapper 直接在构造器参数里），所以"属性注入"和"实例化"合并发生。只有**字段注入**（`@Value` 直接标在字段上）才会表现为独立的第②步。
 
-### 3.2 前端类比
+### 3.2 更贴身的类比：员工入职（2026-10-21 学员复习时补充）
+
+> 学员反馈"生命周期还不是很理解"，这里用"员工入职到退休"的完整时间线重讲一遍。
+
+```text
+① 招聘（构造器 new）        —— 签了合同，但工牌/邮箱/权限都还没发
+② 办入职手续（依赖注入）     —— HR 发工牌、开权限、配电脑（依赖到齐）
+③ 入职培训（@PostConstruct）—— 此时才有全部资源，可以开始干活
+④ 正式上班（业务方法）       —— 干了十年还是同一个你（单例，只创建一次）
+⑤ 退休（@PreDestroy）        —— 公司关闭时统一办手续
+```
+
+**核心问题：为什么构造器里字段是 `null`？**
+
+```java
+public BeanLifecycleDemo() {
+    log.info("applicationName = {}", applicationName);   // null ← 工牌还没发
+}
+
+@PostConstruct
+void init() {
+    log.info("applicationName = {}", applicationName);   // 有值 ← 手续办完了
+}
+```
+
+**顺序是死的**（构造 → 注入 → @PostConstruct），不是"可选"的——这就是实验①日志里 `null` → `research-agent-backend` 的原因。
+
+**IoC 与生命周期的关系**（一句话厘清）：
+
+| 概念 | 回答的问题 |
+|---|---|
+| **IoC** | **谁来做**（容器，而不是你的代码 `new`） |
+| **生命周期** | **按什么顺序做**（构造 → 注入 → @PostConstruct → 使用 → @PreDestroy） |
+
+**三个最常见的误解**：
+
+| 误解 | 真相 |
+|---|---|
+| "每个请求都会 new 一个 Service" | ❌ 单例 bean **只在启动时创建一次**，所有请求共用 |
+| "`@PostConstruct` 每用一次就执行一次" | ❌ 只在 bean 创建后执行**一次**（prototype 才每次创建都执行） |
+| "字段注入发生在构造器之前" | ❌ **构造器先执行**，注入在之后——这就是 null 的根因 |
+
+### 3.3 前端类比
 
 ```text
 React 组件：constructor → render → componentDidMount → … → componentWillUnmount
@@ -138,6 +180,117 @@ Spring Bean：构造器    → 注入  → @PostConstruct      → … → @PreD
 `componentDidMount` 里才敢安全用 props/state，正如 `@PostConstruct` 里才敢安全用注入的依赖。
 
 ---
+
+### 3.4 构造器参数与 `@Autowired` 的真相（2026-10-21 学员追问）
+
+以 [`BeanLifecycleDemo.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/BeanLifecycleDemo.java) 为例，它同时用了两种注入：
+
+```java
+private final ObjectMapper objectMapper;   // 构造器注入（参数）
+@Value("${spring.application.name:research-agent-backend}")
+private String applicationName;            // 字段注入（配置值）
+```
+
+#### ① ★★ 构造器参数的值从哪来（理解 IoC 的核心，2026-10-21 学员强调补讲）
+
+> # ⚠️ 核心机制
+>
+> ## **构造器参数的值 = 从容器管理的"所有已注册 bean"中，按【类型】匹配到的那个实例**
+>
+> 如果它**还没被创建**，容器会**先创建它**（递归处理它自己的依赖），创建好后再传入。
+
+**容器内部有两张表**：
+
+| 表 | 内容 | 何时填 |
+|---|---|---|
+| `beanDefinitionMap`（注册表） | **定义**：类名、作用域、构造器依赖……（"图纸"） | 启动**扫描阶段** |
+| `singletonObjects`（单例缓存） | **真正的对象实例** | **实例化阶段** |
+
+**取值流程**：
+
+```text
+参数类型：ObjectMapper
+   ↓
+① 查 singletonObjects（已有实例？） → 有 → 直接传 ✔
+   ↓ 没有
+② 查 beanDefinitionMap（有定义？） → 有 → 【先创建它】（递归处理其依赖）→ 再传 ✔
+                                  → 无 → ❌ NoSuchBeanDefinitionException
+```
+
+**"已注册的 bean"包含的全部来源**：
+
+| 来源 | 例子 |
+|---|---|
+| `@Component` 家族扫描 | `@Service` / `@Repository` / `@Controller` |
+| `@Bean` 方法 | `LlmClientConfiguration` 产出的 `LlmClient`、`LlmCallGuard` |
+| **自动配置（starter）** | `ObjectMapper`、`DataSource`、`KafkaTemplate` |
+| `@Import` / 手动注册 | 少见 |
+
+**完整微观链路**（以 `BeanLifecycleDemo` 为例）：
+
+```text
+① 扫描：发现 @Component → 反射读构造器 → 需要 ObjectMapper
+        → 写进 beanDefinitionMap
+② 实例化：按类型找 ObjectMapper
+         ├─ singletonObjects 有（Jackson 自动配置已建）→ 取出
+         └─ 没有 → 按 beanDefinitionMap 先创建 → 再回来
+③ new BeanLifecycleDemo(objectMapper实例)   ← 参数值就是这个实例
+```
+
+**失败分支**：一个都没有 → `NoSuchBeanDefinitionException`；有多个 → `NoUniqueBeanDefinitionException`（实验③）。
+
+**这就是 IoC 的价值**：调用方只声明类型，不关心"谁创建、依赖什么、何时创建"——换来**可替换**（场景⑧ 三个 LlmClient 实现）、**可测试**（传 mock）、**可复用**（单例只建一次）。
+
+#### ② `@Autowired` 是"声明"，不是"写入"
+
+它只告诉容器"这个位置需要注入"，真正的赋值是容器用**反射**做的。
+
+**本类没写 `@Autowired` 也正常工作**——因为 **Spring 4.3+ 单构造器可省略**。多构造器时才必须标出用哪个：
+
+```java
+@Autowired                                   // ← 指定用这个
+public Foo(DependencyA a) { ... }
+
+public Foo(DependencyA a, DependencyB b) { ... }   // 不参与注入
+```
+
+#### ③ 写入什么内容、定义在哪
+
+| 问题 | 答案 |
+|---|---|
+| 写入什么 | **同类型 bean 的引用**（对象地址），不是字面值 |
+| 写入方式 | 反射（构造器调用 / `Field.set` / setter） |
+| 定义位置 | `org.springframework.beans.factory.annotation.Autowired` |
+| 源码关键 | `@Target({CONSTRUCTOR, METHOD, PARAMETER, FIELD})` + **`@Retention(RUNTIME)`** |
+
+`RUNTIME` 保留是前提——**注解必须在运行期还存在，容器才能反射读到**（J7「反射读标签」的又一次现身）。
+
+#### ④ 两种注入的时机对比（`null` 的根源）
+
+| | **构造器注入**（`objectMapper`） | **字段注入**（`@Value applicationName`） |
+|---|---|---|
+| 赋值时机 | **和 `new` 同时**（作为参数） | `new` **之后**（反射赋值） |
+| 构造器里能用 | ✅ 可以 | ❌ `null` |
+| `@PostConstruct` 里能用 | ✅ | ✅ |
+
+#### ⑤ 完整时序
+
+```text
+① 扫描：反射读构造器 → 需要 ObjectMapper → 记进 BeanDefinition
+② 实例化 + 构造器注入：找到 ObjectMapper → new BeanLifecycleDemo(它)
+③ 字段注入：反射读 @Value → 从 Environment 取值 → 写入字段
+④ @PostConstruct 回调
+⑤ 运行 → @PreDestroy
+```
+
+#### ⑥ 前端类比：Angular 的 DI 与 Spring 几乎一样
+
+```ts
+@Injectable()                             // ≈ @Component
+export class TaskService {
+  constructor(private api: ApiService) {}  // ≈ 构造器注入，参数同样由容器传入
+}
+```
 
 ## 四、作用域：singleton 与 prototype
 
@@ -304,4 +457,10 @@ NoUniqueBeanDefinitionException:
 
 ## 十一、本课问答记录（2026-10-21）
 
-（待补——学员提问后按双台账纪律记录）
+| # | 提问（原话） | 落档位置 |
+|---|---|---|
+| **Q1** | "bean 的生命周期我还不是很理解，还有 IoC，给我复习下" | 本文 §3.2「员工入职类比」——入职场时间线（招聘→办手续→培训→上班→退休）、IoC 与生命周期的分工（谁来做 / 按什么顺序）、三个常见误解（每请求 new / @PostConstruct 重复执行 / 注入早于构造器）；另配"自查三问"（构造器用依赖 → NPE；预热缓存写 @PostConstruct；prototype 的 @PreDestroy 不执行） |
+| **Q2** | "构造函数里的参数是从哪里传入的？@Autowired 又是什么时候写入的、写入什么内容、从哪里定义的" | 本文 §3.4「构造器参数与 @Autowired 的真相」——容器在 `new` 时**作为参数传入**；`@Autowired` 是**声明**（非写入），单构造器可省略（Spring 4.3+）；写入的是**同类型 bean 的引用**；注解定义在 `org.springframework.beans.factory.annotation.Autowired`（`@Retention(RUNTIME)` → 反射可见） |
+| **Q3** | "所以 IoC 构造函数的参数，是从 bean 里面查找的，如果 bean 不存在，会报错，是这个意思吗" | 本文 §3.4 ④/⑤ 的补充：**按类型查找**（非按名）；找不到时看"必需性"——默认报 `NoSuchBeanDefinitionException`，而 `Optional<Xxx>` / `ObjectProvider<Xxx>` / `@Autowired(required=false)` 注入空不报错（项目实例：`LlmCallGuard(LlmClient)` 必须存在；`GreetingDemoRunner(ObjectProvider<GreetingService>)` 可缺省）；另注意 `String` 等基础类型不是 bean，需用 `@Value` |
+| **Q4** | "构造函数的参数从注册过 bean 里找，@Component/@Service 注册为 bean，所以会有 @Qualifier/@Primary，还有循环依赖，是这个意思吗" | 前半 ✅（bean 来源清单见下）；**后半需纠正**：多候选 → `@Primary`/`@Qualifier`（SP1 实验③）；**循环依赖的成因是"依赖成环"（A→B→A），与候选数量无关**（即使全容器只有 A、B 两个 bean 也爆炸）。另澄清"注册过 ≠ 已创建"——注册阶段只登记 BeanDefinition，实例化阶段按依赖排序（被依赖的先建），成环则排不出顺序。 |
+| **Q5** | "构造器参数从哪来：容器在 new 时传进去的——这个回答不够正确，应该是所有已注册的 bean 吧？我知道是容器 new 时传入的，只是传入的值从哪来" | **学员指出讲解未答到点**（问的是"值从哪来"，答成了"何时传入"）。已在 §3.4 ① 重写为 **★★ 核心机制**：**值是"容器管理的所有已注册 bean 中，按类型匹配到的实例"**；容器两张表（`beanDefinitionMap` 图纸 / `singletonObjects` 实例）；**还没创建时容器先递归创建它再传入**；来源清单（@Component 家族 / @Bean / 自动配置 / @Import）。 |
