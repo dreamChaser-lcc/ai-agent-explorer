@@ -32,14 +32,15 @@ jobs:
         working-directory: docs-site
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 完整历史用于 lastUpdated 读取 git 提交时间
           fetch-depth: 0
 
       - name: 配置 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
+          # 这是构建项目用的 Node，与 action 自身的运行时不相关
           node-version: 22
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
@@ -51,10 +52,10 @@ jobs:
         run: npm run build
 
       - name: 配置 Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: 上传构建产物
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/dist
 
@@ -68,4 +69,4 @@ jobs:
     steps:
       - name: 部署
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
