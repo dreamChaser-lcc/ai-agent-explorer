@@ -366,6 +366,77 @@ NoUniqueBeanDefinitionException:
 
 ---
 
+### 6.5 构造器循环依赖的四种解法（2026-10-21 学员追问）
+
+**前提**：三级缓存只能救**字段/setter 注入**；构造器注入的死锁**没有框架解法**，只能改。
+
+```java
+@Component class A { private final B b; A(B b){this.b=b;} }
+@Component class B { private final A a; B(A a){this.a=a;} }   // ❌ BeanCurrentlyInCreationException
+```
+
+#### 解法 ① 抽第三个类（★★★ 最推荐）
+
+互相依赖通常意味着**共享一份职责**，把它独立出来：
+
+```java
+@Component class A { private final C c; A(C c){this.c=c;} }
+@Component class B { private final C c; B(C c){this.c=c;} }
+@Component class C { /* A、B 共享的那部分逻辑 */ }
+```
+
+> **环是设计问题的信号**，不是配置问题——看到环先问"这俩为什么会互相需要"。
+
+#### 解法 ② `@Lazy` 一方（★★ 应急）
+
+```java
+@Component class A { private final B b; A(@Lazy B b){this.b=b;} }   // 只改这一处
+```
+
+**原理**：注入的是 B 的**代理占位**，真正创建 B 推迟到第一次调用方法时：
+
+```text
+创建 A → 拿 B 的代理（不真创建）→ A 成功
+  → 首次调 b.xxx() → 此时 A 已存在 → 创建 B（能拿到 A）→ 成功
+```
+
+**代价**：延迟初始化、多一层代理、**环还在（只是绕过）**。
+
+#### 解法 ③ 改成字段注入（★ 有效但不推荐）
+
+```java
+@Component class A { @Autowired private B b; }
+@Component class B { @Autowired private A a; }
+```
+
+**原理**：字段注入允许"先 new、后补依赖"，A 的半成品先进三级缓存，创建 B 时能取到。
+**代价**：失去 `final`、官方不推荐、环仍存在。
+
+#### 解法 ④ 事件解耦（★★ 适合"双向通知"场景）
+
+```java
+// A 变更 → 发布事件 → B 监听；B 变更 → 发布事件 → A 监听
+// 两者都只依赖 ApplicationEventPublisher，互不依赖
+```
+
+#### 对比表
+
+| 方案 | 改动量 | 推荐度 | 代价 |
+|---|---|---|---|
+| **抽第三个类** | 中（改设计） | ★★★ | 无，结构更清晰 |
+| `@Lazy` | 小（一个注解） | ★★ 应急 | 延迟初始化、代理、藏环 |
+| 字段注入 | 小 | ★ 不推荐 | 失去不可变、官方不推荐 |
+| 事件解耦 | 大 | ★★（双向通知） | 引入事件机制 |
+
+#### 项目里的健康示范
+
+我们的依赖链**严格单向**，所以从没踩过这个坑：
+
+```text
+LlmClientConfiguration → LlmClient → LlmCallGuard → LlmPlanGenerator → ResearchPlanningService
+（每层只依赖下一层，没有任何回边）
+```
+
 ## 七、动手实验清单（✅ 三实验全部实测 2026-10-21）
 
 | 实验 | 验证什么 | 实测结果 |
@@ -464,3 +535,4 @@ NoUniqueBeanDefinitionException:
 | **Q3** | "所以 IoC 构造函数的参数，是从 bean 里面查找的，如果 bean 不存在，会报错，是这个意思吗" | 本文 §3.4 ④/⑤ 的补充：**按类型查找**（非按名）；找不到时看"必需性"——默认报 `NoSuchBeanDefinitionException`，而 `Optional<Xxx>` / `ObjectProvider<Xxx>` / `@Autowired(required=false)` 注入空不报错（项目实例：`LlmCallGuard(LlmClient)` 必须存在；`GreetingDemoRunner(ObjectProvider<GreetingService>)` 可缺省）；另注意 `String` 等基础类型不是 bean，需用 `@Value` |
 | **Q4** | "构造函数的参数从注册过 bean 里找，@Component/@Service 注册为 bean，所以会有 @Qualifier/@Primary，还有循环依赖，是这个意思吗" | 前半 ✅（bean 来源清单见下）；**后半需纠正**：多候选 → `@Primary`/`@Qualifier`（SP1 实验③）；**循环依赖的成因是"依赖成环"（A→B→A），与候选数量无关**（即使全容器只有 A、B 两个 bean 也爆炸）。另澄清"注册过 ≠ 已创建"——注册阶段只登记 BeanDefinition，实例化阶段按依赖排序（被依赖的先建），成环则排不出顺序。 |
 | **Q5** | "构造器参数从哪来：容器在 new 时传进去的——这个回答不够正确，应该是所有已注册的 bean 吧？我知道是容器 new 时传入的，只是传入的值从哪来" | **学员指出讲解未答到点**（问的是"值从哪来"，答成了"何时传入"）。已在 §3.4 ① 重写为 **★★ 核心机制**：**值是"容器管理的所有已注册 bean 中，按类型匹配到的实例"**；容器两张表（`beanDefinitionMap` 图纸 / `singletonObjects` 实例）；**还没创建时容器先递归创建它再传入**；来源清单（@Component 家族 / @Bean / 自动配置 / @Import）。 |
+| **Q6** | "`@Component class A { A(B b) }` / `@Component class B { B(A a) }` 这种循环依赖可以怎么解" | 本文 §6.5「构造器循环依赖的四种解法」——**三级缓存救不了构造器注入**，必须改：① **抽第三个类**（最推荐，环是设计信号）② `@Lazy` 一方（代理占位、延迟创建，应急）③ 改字段注入（三级缓存可救，不推荐）④ 事件解耦（双向通知场景）；附对比表与项目"单向依赖链"示范。 |
