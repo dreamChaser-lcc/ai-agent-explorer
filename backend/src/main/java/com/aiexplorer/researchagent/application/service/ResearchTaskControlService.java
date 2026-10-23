@@ -17,6 +17,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 负责处理研究任务的人工确认与基础控制动作。
@@ -102,8 +104,30 @@ public class ResearchTaskControlService {
         researchTaskRepository.save(task);
 
         // 只有计划被批准时才真正进入执行器。
+        // ★ 场景⑨：必须在【事务提交后】再启动执行——
+        //   否则并发确认时两个线程都会执行到这一步（各自事务未提交、互相看不到），
+        //   导致同一任务被并发执行；且事务回滚时消息/执行已发生，无法收回。
         if (approved) {
-            researchTaskOrchestrator.startExecution(taskId);
+            runAfterCommit(() -> researchTaskOrchestrator.startExecution(taskId));
+        }
+    }
+
+    /**
+     * 事务提交后执行；无事务上下文则立即执行（场景⑨）。
+     *
+     * <p>Spring 的 {@code afterCommit} 回调保证：事务回滚时这里不会执行，
+     * 从而避免"状态没落库、消息却发出去了"的幽灵副作用。</p>
+     */
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
         }
     }
 

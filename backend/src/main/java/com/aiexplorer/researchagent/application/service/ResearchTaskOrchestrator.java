@@ -9,6 +9,7 @@ import com.aiexplorer.researchagent.infrastructure.persistence.repository.Resear
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchTaskRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.SourceDocumentRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.StepExecutionRepository;
+import com.aiexplorer.researchagent.infrastructure.lock.DistributedTaskLock;
 import com.aiexplorer.researchagent.infrastructure.tools.ResearchToolContext;
 import com.aiexplorer.researchagent.infrastructure.tools.ResearchToolResult;
 import com.aiexplorer.researchagent.infrastructure.tools.ToolSourceDocument;
@@ -27,6 +28,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -61,6 +63,7 @@ public class ResearchTaskOrchestrator {
     private final TaskProgressStreamService taskProgressStreamService;   // SSE 进度推送
     private final ObjectMapper objectMapper;                             // JSON 序列化
     private final TaskExecutionProducer taskExecutionProducer;           // ★ 场景⑥：任务执行消息生产者（ASYNC 走 Kafka）
+    private final DistributedTaskLock distributedTaskLock;               // ★ 场景⑨：任务级分布式锁（防并发重复执行）
 
     // ===================== 构造器注入 =====================
     public ResearchTaskOrchestrator(
@@ -73,7 +76,8 @@ public class ResearchTaskOrchestrator {
             TaskEventService taskEventService,
             TaskProgressStreamService taskProgressStreamService,
             ObjectMapper objectMapper,
-            TaskExecutionProducer taskExecutionProducer) { // ★ 场景⑥：注入消息生产者（替代原线程池注入）
+            TaskExecutionProducer taskExecutionProducer,
+            DistributedTaskLock distributedTaskLock) { // ★ 场景⑥：消息生产者 ｜ 场景⑨：任务锁
         this.researchTaskRepository = researchTaskRepository;
         this.researchStepRepository = researchStepRepository;
         this.stepExecutionRepository = stepExecutionRepository;
@@ -84,6 +88,7 @@ public class ResearchTaskOrchestrator {
         this.taskProgressStreamService = taskProgressStreamService;
         this.objectMapper = objectMapper;
         this.taskExecutionProducer = taskExecutionProducer;
+        this.distributedTaskLock = distributedTaskLock;
     }
 
     /**
@@ -132,6 +137,22 @@ public class ResearchTaskOrchestrator {
      * @param taskId 任务 UUID
      */
     public void executeTask(UUID taskId) {
+        // ★ 场景⑨：任务级互斥——同一任务同一时刻只允许一个执行者。
+        //   并发来源：确认时发出多条消息 / Kafka 重投 / 多实例消费 / SYNC 并发调用。
+        //   拿不到锁 → 直接跳过（已有执行者在跑，重复执行没有意义）。
+        Optional<String> lockToken = distributedTaskLock.tryLock(taskId);
+        if (lockToken.isEmpty()) {
+            return;
+        }
+        try {
+            doExecuteTask(taskId);
+        } finally {
+            distributedTaskLock.unlock(taskId, lockToken.get());
+        }
+    }
+
+    /** 真正的执行逻辑（由 {@link #executeTask(UUID)} 加锁后调用）。 */
+    private void doExecuteTask(UUID taskId) {
         // 1. 加载任务并检查
         ResearchTaskEntity task = loadTask(taskId);
         if (shouldStop(task)) { // 任务可能已被用户暂停或取消
