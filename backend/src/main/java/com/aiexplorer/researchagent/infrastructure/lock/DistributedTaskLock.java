@@ -52,21 +52,39 @@ public class DistributedTaskLock {
      * @return 持有凭证（token）；已被别人持有则返回 empty
      */
     public Optional<String> tryLock(UUID taskId) {
-        String key = KEY_PREFIX + taskId;
-        String token = UUID.randomUUID().toString();
-        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, token, LOCK_TTL);
-        if (Boolean.TRUE.equals(acquired)) {
-            log.info("[锁] 获取成功 taskId={} token={} ttl={}s", taskId, token.substring(0, 8), LOCK_TTL.getSeconds());
-            return Optional.of(token);
-        }
-        log.warn("[锁] 获取失败：任务已有执行者，跳过本次执行 taskId={}", taskId);
-        return Optional.empty();
+        return acquire(KEY_PREFIX + taskId, "taskId=" + taskId);
     }
 
     /** 释放任务执行锁（token 不匹配则不删——防止误删他人锁）。 */
     public void unlock(UUID taskId, String token) {
-        String key = KEY_PREFIX + taskId;
+        release(KEY_PREFIX + taskId, token, "taskId=" + taskId);
+    }
+
+    /**
+     * 通用锁（场景⑩：定时清理等非任务场景使用，key 由调用方给定）。
+     */
+    public Optional<String> tryLock(String lockKey) {
+        return acquire(lockKey, "key=" + lockKey);
+    }
+
+    /** 释放通用锁。 */
+    public void unlock(String lockKey, String token) {
+        release(lockKey, token, "key=" + lockKey);
+    }
+
+    private Optional<String> acquire(String key, String logTag) {
+        String token = UUID.randomUUID().toString();
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, token, LOCK_TTL);
+        if (Boolean.TRUE.equals(acquired)) {
+            log.info("[锁] 获取成功 {} token={} ttl={}s", logTag, token.substring(0, 8), LOCK_TTL.getSeconds());
+            return Optional.of(token);
+        }
+        log.warn("[锁] 获取失败：已有持有者，跳过本次执行 {}", logTag);
+        return Optional.empty();
+    }
+
+    private void release(String key, String token, String logTag) {
         Long deleted = redisTemplate.execute(UNLOCK_SCRIPT, List.of(key), token);
-        log.info("[锁] 释放 taskId={} 结果={}", taskId, deleted);
+        log.info("[锁] 释放 {} 结果={}", logTag, deleted);
     }
 }
