@@ -148,6 +148,39 @@ TaskEventLogStore（接口）
 
 `PersistenceModeDemoRunner`（@Profile("dev")）启动时写入 + 查询一条演示事件，**两套实现的 SQL 都打印在日志里**，可直接对照。
 
+### 4.1 ★ 同一操作的 SQL 对照（2026-10-23 学员要求补充）
+
+> **JPA 不减少 SQL，它只是把 SQL 藏起来**——学它必须先看它替你写了什么。
+
+| 操作 | JPA 写法 | **底层生成的 SQL** | 直接 SQL 写法 |
+|---|---|---|---|
+| 按主键查 | `findById(id)` | `SELECT * FROM research_task WHERE id = ?` | `jdbcTemplate.queryForObject("SELECT * FROM research_task WHERE id = ?", ...)` |
+| 分页查 | `findAll(PageRequest.of(0, 10))` | `SELECT * FROM research_task LIMIT ? OFFSET ?` + `SELECT COUNT(*) FROM research_task` | 同左两条 |
+| 派生查询 | `findByTaskIdOrderByCreatedAtDesc(taskId)` | `SELECT * FROM task_event_log WHERE task_id = ? ORDER BY created_at DESC` | 手写同一条 |
+| 批量 IN | `findByTaskIdIn(ids)` | `SELECT * FROM research_step WHERE task_id IN (?, ?, ...)` | 同左 |
+| 新增 | `save(entity)` | 无 id：`INSERT INTO research_task (...) VALUES (...)`<br>有 id：`UPDATE ... WHERE id = ?` | `INSERT` / `UPDATE` |
+| 删除 | `deleteById(id)` | `DELETE FROM research_task WHERE id = ?` | `DELETE` |
+| 关联懒加载 | `task.getSteps()` | **每个任务一条**：`SELECT * FROM research_step WHERE task_id = ?` | 一次 JOIN 或一次 IN |
+
+**派生查询命名规则（能预判 SQL 的关键）**：
+
+```text
+findBy      前缀        → SELECT
+TaskId      字段名      → WHERE task_id = ?
+OrderBy     排序        → ORDER BY
+CreatedAt   字段名      → created_at
+Desc        方向        → DESC
+```
+
+**项目实证（启动日志里的两套 SQL）**：
+
+```text
+JPA 模式：   Hibernate: insert into task_event_log (...) values (...)
+MyBatis 模式：==>  Preparing: INSERT INTO task_event_log (...) VALUES (?, ..., CAST(? AS JSON), ...)
+```
+
+**同一条插入，JPA 由框架生成、MyBatis 由你手写**——输出几乎一样，区别只在"谁写的"。**看懂 SQL 再回看框架，才不会"只会用不会修"**。
+
 ---
 
 ## 五、用 Actuator 观察连接池
@@ -251,6 +284,7 @@ JPA 模式的对照：日志是 `Hibernate: insert into task_event_log (...)`（
 | # | 提问（原话） | 落档位置 |
 |---|---|---|
 | **Q1** | "HikariCP 这个是什么意思" | 本文 §2.1 补充 + 本节 Q1 详解（见下） |
+| **Q2** | "涉及 SQL 的不要以 JPA 的写法讲解……JPA 封装太深了，我不能很好学习到实现的原理" | §4.1「同一操作的 SQL 对照」——JPA 每种写法旁标"底层生成的 SQL"；并固化为**全部课程**的写作约定（Spring 总纲约定第 9 条） |
 
 ### 10.1 Q1 详解：HikariCP 是什么
 
