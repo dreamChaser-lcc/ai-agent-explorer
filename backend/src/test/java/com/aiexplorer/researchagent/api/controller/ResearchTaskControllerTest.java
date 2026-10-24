@@ -1,6 +1,7 @@
 package com.aiexplorer.researchagent.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -10,8 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aiexplorer.researchagent.api.request.CreateResearchTaskRequest;
+import com.aiexplorer.researchagent.api.response.PageResponse;
 import com.aiexplorer.researchagent.api.response.TaskDetailResponse;
 import com.aiexplorer.researchagent.api.response.TaskSummaryResponse;
+import com.aiexplorer.researchagent.application.service.CreateTaskOutcome;
 import com.aiexplorer.researchagent.application.service.ResearchTaskCommandService;
 import com.aiexplorer.researchagent.application.service.ResearchTaskControlService;
 import com.aiexplorer.researchagent.application.service.ResearchTaskQueryService;
@@ -32,7 +35,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * 校验研究任务控制器的主要接口行为。
+ * 校验研究任务控制器的主要接口行为（MockMvc：不启动容器、不连数据库）。
+ *
+ * 场景⑫ 修复两处历史欠账：
+ *   ① createTask 返回类型改为 CreateTaskOutcome（场景④ 引入"是否真新建"）
+ *   ② listTasks 从无参 List 改为分页 PageResponse（场景③ 分页改造）
  */
 @WebMvcTest(controllers = ResearchTaskController.class)
 @Import(ApiExceptionHandler.class)
@@ -72,7 +79,7 @@ class ResearchTaskControllerTest {
         );
 
         when(researchTaskCommandService.createTask(any(CreateResearchTaskRequest.class), eq("demo-user")))
-                .thenReturn(response);
+                .thenReturn(new CreateTaskOutcome(response, true));
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -101,12 +108,16 @@ class ResearchTaskControllerTest {
                 OffsetDateTime.now(),
                 OffsetDateTime.now()
         );
-        when(researchTaskQueryService.listTasks()).thenReturn(List.of(response));
+        PageResponse<TaskSummaryResponse> page =
+                new PageResponse<>(List.of(response), 0, 10, 1L, 1);
+        // 用宽松匹配：status 为 null 时 any() 才能匹配上（isNull() 与泛型推断有坑，实测未命中）
+        when(researchTaskQueryService.listTasks(anyInt(), anyInt(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/tasks"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].title").value("列表任务"))
-                .andExpect(jsonPath("$[0].executionMode").value("SYNC"));
+                .andExpect(jsonPath("$.content[0].title").value("列表任务"))
+                .andExpect(jsonPath("$.content[0].executionMode").value("SYNC"))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
