@@ -1,0 +1,8 @@
+# 构建上下文排除清单（场景⑬：不把无关文件发给 Docker daemon）
+target/
+logs/
+data/
+.git/
+.idea/
+*.log
+*.md

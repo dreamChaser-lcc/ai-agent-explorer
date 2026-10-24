@@ -34,8 +34,9 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # 设置工作目录并复制编译产物（只复制 jar，不带编译工具链）
 WORKDIR /app
-COPY --from=builder /build/target/*.jar app.jar
-RUN chown -R appuser:appgroup /app
+# ★ 用 --chown 一步完成"复制 + 改属主"：
+#   分开写（COPY + RUN chown）会让 100MB 的 jar 在新层里再复制一份，镜像白胖 100MB。
+COPY --chown=appuser:appgroup --from=builder /build/target/*.jar app.jar
 
 # 以非 root 用户运行
 USER appuser
