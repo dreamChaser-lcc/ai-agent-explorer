@@ -1,5 +1,6 @@
 package com.aiexplorer.researchagent.api.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -11,16 +12,34 @@ import java.util.List;
  * - 错误响应统一为本结构：code（给程序看）+ message（给人看）
  *   + path / timestamp（排查用）+ fields（仅参数校验错误非空：字段级明细）。
  */
+@Schema(description = "统一错误响应体（全局异常处理器产出）")
 public record ApiError(
+        @Schema(description = "错误码（给程序判断用）", example = "VALIDATION_FAILED")
         String code,
+
+        @Schema(description = "错误信息（给人看）", example = "title 不能为空")
         String message,
+
+        @Schema(description = "请求路径（排查定位用）", example = "/api/tasks")
         String path,
+
+        @Schema(description = "错误发生时间（ISO 8601，含时区）", example = "2026-10-25T17:30:00+08:00")
         OffsetDateTime timestamp,
+
+        @Schema(description = "字段级校验明细（仅参数校验失败时非空）")
         List<FieldViolation> fields,
+
+        @Schema(description = "是否可重试：true 表示客户端可稍后重试（如临时故障）", example = "false")
         boolean retryable) {
 
     /** 单个字段的校验失败明细（如 field=title、reason=title 不能为空）。 */
-    public record FieldViolation(String field, String reason) {
+    @Schema(description = "单个字段的校验失败明细")
+    public record FieldViolation(
+            @Schema(description = "字段名", example = "title")
+            String field,
+
+            @Schema(description = "失败原因", example = "title 不能为空")
+            String reason) {
     }
 
     /** 便捷构造：无字段明细（大多数错误场景）。 */

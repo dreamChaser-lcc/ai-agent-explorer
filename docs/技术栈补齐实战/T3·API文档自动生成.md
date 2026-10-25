@@ -654,3 +654,73 @@ public record CreateResearchTaskRequest(
 ```
 
 补完后 Expand all 里每个字段都有中文说明——**这才是"可交付的文档"**。
+
+### 12.4 补齐 @Schema：6 个 DTO（2026-10-25 实施记录）
+
+#### 一、补齐范围
+
+| DTO | 字段数 | 说明 |
+|---|---|---|
+| `CreateResearchTaskRequest` | 4 | 请求体 |
+| `PlanConfirmationRequest` | 2 | 请求体 |
+| `TaskSummaryResponse` | 9 | 列表响应 |
+| `TaskDetailResponse` | 12 | 详情响应 |
+| `ApiError`（含嵌套 `FieldViolation`） | 6 + 2 | 错误体 |
+| `PageResponse` | 5 | 分页壳 |
+
+**@Schema 使用数：0 → 44 处**（含嵌套）。
+
+#### 二、两个实用写法
+
+**① `requiredMode` 显式标注必填**（比靠 `@NotBlank` 推断更明确）：
+
+```java
+@Schema(description = "任务标题", example = "调研 Java Agent 架构",
+        requiredMode = Schema.RequiredMode.REQUIRED)
+@NotBlank(message = "title 不能为空") String title,
+```
+
+**② 泛型类用 `@Schema(name = ...)` 改名**：
+
+```java
+@Schema(name = "PageResponse", description = "通用分页响应壳")
+public record PageResponse<T>(...)
+```
+
+**改名前**：spec 里叫 `PageResponseTaskSummaryResponse`（泛型被拼进类名，可读性差）
+**改名后**：`PageResponse` ✅（实测确认）
+
+#### 三、实测效果
+
+```text
+改前：Schema 里只有字段名 + 类型（title: string）
+改后：title → "任务标题"，example = "调研 Java Agent 架构"，required = true
+
+spec 内 description 总数 = 153
+Page 相关 Schema 名 = PageResponse（改名成功）
+接口数 = 17（未受影响）
+```
+
+Swagger UI 的 Expand all 现在显示：
+
+| 字段 | 类型 | 说明 | 示例 |
+|---|---|---|---|
+| `title` *必填* | string | 任务标题 | 调研 Java Agent 架构 |
+| `goal` *必填* | string | 研究目标（自然语言描述） | 梳理可落地的 DDD 切入点 |
+| `executionMode` *必填* | enum | 执行模式：SYNC 同步 / ASYNC Kafka | ASYNC |
+| `idempotencyKey` | string | 幂等键：相同 key 只创建一次 | order-20261025-001 |
+
+#### 四、一个坑：`ClassFormatError: Extra bytes at the end of class file`
+
+**现象**：`mvn clean compile` 返回 0，但启动报：
+
+```text
+Caused by: java.lang.ClassFormatError: Extra bytes at the end of class file
+  com/aiexplorer/researchagent/infrastructure/web/RequestTraceInterceptor
+```
+
+**原因**：编译产物损坏（上次 clean 时应用仍在跑，class 文件写入不完整）。
+
+**解法**：`mvn clean` 彻底删 target 后重新 `compile`（不是增量编译）。
+
+**判断**：`COMPILE=0` 只代表"编译没报错"，不代表"class 文件完整"——启动时才暴露。
