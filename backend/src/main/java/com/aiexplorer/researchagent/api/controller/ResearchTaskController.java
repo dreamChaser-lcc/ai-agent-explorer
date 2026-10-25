@@ -2,6 +2,8 @@ package com.aiexplorer.researchagent.api.controller; // api 层的 controller �
 
 // ===================== 请求 DTO 导入 =====================
 import com.aiexplorer.researchagent.api.request.CreateResearchTaskRequest; // 创建任务的请求体
+import io.swagger.v3.oas.annotations.Operation;   // T3：接口说明（OpenAPI 3，注意不是 Swagger 2 的 @ApiOperation）
+import io.swagger.v3.oas.annotations.tags.Tag;    // T3：接口分组
 import com.aiexplorer.researchagent.api.request.PlanConfirmationRequest;   // 确认/拒绝计划的请求体
 
 // ===================== 响应 DTO 导入 =====================
@@ -57,6 +59,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter; // SSE�
  */
 @RestController             // 等价于 @Controller + @ResponseBody，每个方法返回 JSON
 @RequestMapping("/api/tasks") // 类级别路径前缀：该控制器下所有接口都从 /api/tasks 开始
+@Tag(name = "任务管理", description = "研究任务的创建、查询、控制（暂停/恢复/取消/确认计划）")  // T3：Swagger 分组名
 public class ResearchTaskController {
 
     // ===================== 依赖注入（构造器注入方式，Spring 推荐） =====================
@@ -97,6 +100,7 @@ public class ResearchTaskController {
      * @param request 前端提交的研究任务信息，@Valid 会触发字段校验
      * @return 创建后的任务摘要（含 TaskNo、状态等）
      */
+    @Operation(summary = "创建研究任务", description = "首次创建返回 201；相同 idempotencyKey 重放返回 200（场景④ 幂等）")  // T3
     @PostMapping               // 处理 POST /api/tasks
     public ResponseEntity<TaskSummaryResponse> createTask(@Valid @RequestBody CreateResearchTaskRequest request) {
         // 委托给命令服务，写死 createdBy 为 "demo-user"（MVP 阶段没有用户系统）
@@ -116,6 +120,7 @@ public class ResearchTaskController {
      *
      * 返回结构（场景③ 起）：分页壳 { content, page, size, totalElements, totalPages }。
      */
+    @Operation(summary = "分页查询任务列表", description = "按创建时间倒序；size 服务端上限 100 条")  // T3
     @GetMapping                // 处理 GET /api/tasks
     public PageResponse<TaskSummaryResponse> listTasks(
             @RequestParam(defaultValue = "0") int page,
@@ -129,7 +134,9 @@ public class ResearchTaskController {
      *
      * GET /api/tasks/{taskId}
      */
-    @GetMapping("/{taskId}")   // {taskId} 是路径变量，自动绑定到 @PathVariable
+    @Operation(summary = "查询任务详情")
+    @GetMapping("/{taskId}")
+       // {taskId} 是路径变量，自动绑定到 @PathVariable
     public TaskDetailResponse getTaskDetail(@PathVariable UUID taskId) {
         return researchTaskQueryService.getTaskDetail(taskId);
     }
@@ -139,7 +146,9 @@ public class ResearchTaskController {
      *
      * GET /api/tasks/{taskId}/executions
      */
+    @Operation(summary = "查询步骤执行时间线")
     @GetMapping("/{taskId}/executions")
+    
     public List<StepExecutionResponse> listExecutions(@PathVariable UUID taskId) {
         return taskActivityQueryService.listStepExecutions(taskId);
     }
@@ -149,7 +158,9 @@ public class ResearchTaskController {
      *
      * GET /api/tasks/{taskId}/events
      */
+    @Operation(summary = "查询任务事件日志")
     @GetMapping("/{taskId}/events")
+    
     public List<TaskEventResponse> listTaskEvents(@PathVariable UUID taskId) {
         return taskActivityQueryService.listTaskEvents(taskId);
     }
@@ -162,7 +173,9 @@ public class ResearchTaskController {
      *
      * 该连接会持续推送事件，直到前端 close 或任务完成。
      */
+    @Operation(summary = "订阅任务进度（SSE 流）")
     @GetMapping("/{taskId}/stream")
+    
     public SseEmitter streamTaskProgress(@PathVariable UUID taskId) {
         return taskProgressStreamService.subscribe(taskId);
     }
@@ -177,7 +190,9 @@ public class ResearchTaskController {
      *
      * 批准后任务进入执行阶段，拒绝后任务状态回退。
      */
+    @Operation(summary = "确认或拒绝研究计划")
     @PostMapping("/{taskId}/confirm")
+    
     @ResponseStatus(HttpStatus.NO_CONTENT) // 返回 204 No Content（无响应体）
     public void confirmPlan(
             @PathVariable UUID taskId,
@@ -190,7 +205,9 @@ public class ResearchTaskController {
      *
      * POST /api/tasks/{taskId}/pause
      */
+    @Operation(summary = "暂停任务")
     @PostMapping("/{taskId}/pause")
+    
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void pauseTask(@PathVariable UUID taskId) {
         researchTaskControlService.pauseTask(taskId);
@@ -201,7 +218,9 @@ public class ResearchTaskController {
      *
      * POST /api/tasks/{taskId}/resume
      */
+    @Operation(summary = "恢复任务")
     @PostMapping("/{taskId}/resume")
+    
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resumeTask(@PathVariable UUID taskId) {
         researchTaskControlService.resumeTask(taskId);
@@ -212,7 +231,9 @@ public class ResearchTaskController {
      *
      * POST /api/tasks/{taskId}/cancel
      */
+    @Operation(summary = "取消任务")
     @PostMapping("/{taskId}/cancel")
+    
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelTask(@PathVariable UUID taskId) {
         researchTaskControlService.cancelTask(taskId);

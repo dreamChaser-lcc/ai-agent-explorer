@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/sp11")
 @Profile("dev")
+@Tag(name = "N+1 演示（教学）", description = "对照 N+1 查询与一条 JOIN 的 SQL 条数；仅 dev 注册")
 public class NPlusOneDemoController {
 
     private final ResearchTaskRepository taskRepository;
@@ -42,6 +45,7 @@ public class NPlusOneDemoController {
     }
 
     /** ❌ N+1 写法：1 次主查询 + 循环里 N 次子查询。 */
+    @Operation(summary = "N+1 写法", description = "1 次主查询 + N 次子查询（size=5 时共 6 条 SQL）")
     @GetMapping("/tasks/n-plus-one")
     public List<Map<String, Object>> nPlusOne(@RequestParam(defaultValue = "10") int size) {
         List<ResearchTaskEntity> tasks = taskRepository
@@ -61,6 +65,7 @@ public class NPlusOneDemoController {
     }
 
     /** ✅ 优化写法：一条 GROUP BY JOIN，把 N 次查询压成 1 次。 */
+    @Operation(summary = "优化写法", description = "一条 LEFT JOIN + GROUP BY 搞定（1 条 SQL）")
     @GetMapping("/tasks/optimized")
     public List<Map<String, Object>> optimized(@RequestParam(defaultValue = "10") int size) {
         int limit = Math.min(Math.max(size, 1), 50);

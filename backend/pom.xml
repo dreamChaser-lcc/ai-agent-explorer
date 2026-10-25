@@ -142,6 +142,24 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <!-- T3 接口文档：SpringDoc OpenAPI 3（官方 Swagger UI）
+             · 访问 /swagger-ui.html（UI）与 /v3/api-docs（JSON spec）
+             · 生产用 springdoc.api-docs.enabled=false 关闭
+
+             ★ 为什么不用 Knife4j（实测踩坑记录 2026-10-25）：
+               1) knife4j 4.5.0 自带 springdoc 2.3.0 → 依赖 Spring 6.0 的
+                  ControllerAdviceBean(Object) 构造器，Boot 3.5(Spring 6.2) 已删除
+                  → NoSuchMethodError，spec 恒为空
+               2) 仅排除 springdoc-openapi-starter-webmvc-ui 不够——
+                  starter-common / starter-webmvc-api 仍带 2.3.0，与 2.8.6 混搭
+                  → 又报 NoSuchMethodError: SpringDocConfigProperties.getGroupConfigs()
+               → 结论：Boot 3.5 上直接用 springdoc 2.8.x 最稳（UI 功能等价，只是皮肤朴素） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.6</version>
+        </dependency>
     </dependencies>
 
     <build>

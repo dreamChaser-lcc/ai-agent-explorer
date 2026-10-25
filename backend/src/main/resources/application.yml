@@ -66,6 +66,18 @@ server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
 
+# ===== T3 接口文档（SpringDoc OpenAPI 3）=====
+# 生产环境务必设置 SPRINGDOC_ENABLED=false —— 文档暴露接口结构，属于内部信息
+# 访问：/swagger-ui.html（UI）  /v3/api-docs（JSON spec，可导入 Apifox/Postman）
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /swagger-ui.html
+  default-produces-media-type: application/json
+
 management:
   endpoints:
     web:

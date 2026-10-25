@@ -3,6 +3,8 @@ package com.aiexplorer.researchagent.infrastructure.web;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -11,8 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/sp8")
-public class Sp8DemoController {
+@Tag(name = "拦截器演示（教学）", description = "SP8 实验：方法级 @RequireRole 权限校验") class Sp8DemoController {
 
+    @Operation(summary = "仅 ADMIN 可访问", description = "由 PermissionInterceptor 读取方法注解后校验角色")
     @GetMapping("/admin-only")
     @RequireRole("ADMIN")
     public Map<String, Object> adminOnly() {
