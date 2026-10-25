@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Research Agent API · Scalar</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #fallback { padding: 24px; color: #b45309; background: #fffbeb; border-bottom: 1px solid #fde68a; }
+    #fallback code { background: #fef3c7; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <!--
+    Scalar：现代 OpenAPI 文档 UI（替代 Swagger UI 的另一种皮肤）
+    · data-url 指向 SpringDoc 生成的 spec（/v3/api-docs）
+    · 与 /swagger-ui.html 读的是同一份 spec，只是渲染方式不同
+    · 依赖 CDN（jsdelivr）；离线环境需把 JS 下载到 static/ 目录并改 src
+  -->
+  <div id="fallback" style="display:none">
+    Scalar CDN 加载失败（可能被网络拦截）。离线方案：把
+    <code>@scalar/api-reference</code> 的 JS 下载到
+    <code>src/main/resources/static/scalar.js</code>，再把下方 script 的 src 改成
+    <code>/scalar.js</code>。
+  </div>
+
+  <script id="api-reference" data-url="/v3/api-docs"></script>
+
+  <script>
+    // 若 CDN 脚本 5 秒内未加载，显示离线提示
+    setTimeout(function () {
+      if (!document.querySelector('scalar-api-reference')) {
+        document.getElementById('fallback').style.display = 'block';
+      }
+    }, 5000);
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>

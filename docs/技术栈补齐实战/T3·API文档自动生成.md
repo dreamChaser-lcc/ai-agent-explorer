@@ -174,6 +174,52 @@ tags：任务管理
 ```
 ---
 
+### 4.5 三种 UI 访问地址（2026-10-25 落地）
+
+**启动应用**：
+
+```powershell
+cd d:\project\lcc-github\ai-agent-explorer\backend
+Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+$env:APP_LLM_SIMULATED="true"
+$env:APP_LLM_SIMULATE_MODE="NORMAL"
+mvn spring-boot:run "-Dspring-boot.run.profiles=dev" -Dmaven.test.skip=true
+```
+
+**三个 UI 地址**（读同一份 `/v3/api-docs`，渲染不同）：
+
+| UI | 地址 | 特点 | 依赖 |
+|---|---|---|---|
+| **Swagger UI 5.20.1** | http://localhost:8080/swagger-ui.html | 可 **Try it out** 调试；单栏滚动，字段区较松 | 内置（零依赖） |
+| **Scalar** | http://localhost:8080/scalar.html | 现代界面、右侧抽屉看模型、深浅色主题 | ⚠️ CDN（可能被网络拦截） |
+| **ReDoc 2.1.5** | http://localhost:8080/redoc.html | **三栏文档式**（左导航/中接口/右模型常驻），**只读** | ✅ **本地 `redoc.js`（0.87 MB，已离线化）** |
+
+**原始 spec（可导入 Apifox/Postman）**：
+
+```text
+http://localhost:8080/v3/api-docs
+```
+
+**三者的取舍**：
+
+| 场景 | 用哪个 |
+|---|---|
+| 调试接口（发请求看响应） | **Swagger UI** |
+| 日常浏览、看字段说明 | **Scalar**（若 CDN 可用） |
+| 交付给前端/外部（要"文档感"） | **ReDoc**（离线可用，推荐） |
+| 导入 Apifox / 生成 TS 类型 | `/v3/api-docs` |
+
+**页面文件位置**：
+
+| 文件 | 说明 |
+|---|---|
+| [`scalar.html`](../../backend/src/main/resources/static/scalar.html) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/static/scalar.html) | Scalar 页面（CDN 加载 JS） |
+| [`redoc.html`](../../backend/src/main/resources/static/redoc.html) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/static/redoc.html) | ReDoc 页面（用 `Redoc.init` 显式初始化） |
+| [`redoc.js`](../../backend/src/main/resources/static/redoc.js) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/static/redoc.js) | ReDoc 2.1.5 standalone（0.87 MB，离线） |
+
+---
+
 ## 五、企业完整流程（6 步）
 
 ```text
@@ -333,6 +379,8 @@ springdoc:
 | **Q1** | "SpringDoc 也是基于 Swagger 弄的吗，为什么路由会是 /swagger-ui.html" | §12.1「SpringDoc / OpenAPI / Swagger UI 三层关系」（见下，含 302 实测） |
 | **Q2** | "@Operation 这个注解是干嘛的" | §12.2「@Operation：给接口写说明书」（见下，含有无注解的 spec 对比实测） |
 | **Q3** | "这个是什么内容，schemas" | §12.3「Schemas：数据模型字典」（见下，含 10 个 schema 的项目映射） |
+| **Q4** | "这个是什么文档"（截图 `live-gw-dev.vzan.com/integral/doc.html`） | §12.5「如何一眼识别 Knife4j / Swagger UI / ReDoc / Scalar」（见下） |
+| **Q5** | "每个字段加 @Schema 实现字段描述是正确的吗，在企业中会怎么做，可以自动生成吗" | §12.6「@Schema 的写法策略、企业流程与自动化边界」（见下） |
 
 ### 12.1 SpringDoc、OpenAPI、Swagger UI 的三角关系（Q1 · 2026-10-25）
 
@@ -804,4 +852,162 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev" `
 "Unable to determine Dialect" 是【症状】，不是【病因】
   病因永远在更深的 Caused by 里（连接为什么失败）
 顺序：连接 → 元数据 → 方言；连不上就永远推不出方言
+```
+
+### 12.5 一眼识别四种文档 UI（Q4 · 2026-10-25）
+
+#### 一、识别特征
+
+| 特征 | Knife4j | Swagger UI | ReDoc | Scalar |
+|---|---|---|---|---|
+| **URL** | **`/doc.html`** | `/swagger-ui.html` | 自定义静态页 | 自定义静态页 |
+| 布局 | **左侧菜单 + 顶部多 tab** | 单栏上下滚动 | 三栏（导航/内容/模型） | 左导航 + 右抽屉 |
+| 左侧固定项 | 主页 / Authorize / **Swagger Models** / **文档管理** | 无 | 无 | 无 |
+| 分组徽标 | **显示每组接口数**（如 `Open-积分 40`） | 无 | 无 | 无 |
+| 语言 | 默认中文 | 英文 | 英文 | 英文 |
+
+**截图案例**（`live-gw-dev.vzan.com/integral/doc.html`）：左侧 `APP·短剧 1` / `Open-积分 40` 带数字徽标 + `Swagger Models` / `文档管理` 菜单 → **Knife4j**。
+
+#### 二、Knife4j 的四个杀手功能
+
+| 功能 | 说明 |
+|---|---|
+| 中文界面 | 字段说明、错误提示本地化 |
+| **多 tab 浏览** | 同时开多个接口对比（截图正在用） |
+| 全局 Authorize | 一次填 token，所有接口生效 |
+| **离线文档导出** | 一键导出 HTML/PDF/Markdown |
+| **文档管理** | 左侧菜单可挂自定义 Markdown（规范/变更记录） |
+
+**企业选它的原因不是技术先进，是团队用起来顺手。**
+
+#### 三、本项目为什么没用 Knife4j
+
+```text
+尝试 1：Knife4j 4.5.0 直连
+  → /doc.html 能开，但 spec 空
+  → NoSuchMethodError: ControllerAdviceBean.<init>(Object)
+     （内置 springdoc 2.3.0 依赖 Spring 6.0 构造器，Boot 3.5 用 6.2 已删）
+
+尝试 2：排除 webmvc-ui + 覆盖 springdoc 2.8.6
+  → NoSuchMethodError: SpringDocConfigProperties.getGroupConfigs()
+     （starter-common/webmvc-api 仍带 2.3.0，两版混搭）
+
+结论：Boot 3.5 上 Knife4j 4.5.0 不稳定 → 用官方 springdoc 2.8.6 + Swagger UI
+```
+
+#### 四、想在 Boot 3.5 用 Knife4j 的两条路
+
+| 路径 | 做法 | 风险 |
+|---|---|---|
+| A. 降 springdoc 到 2.3.x | Knife4j 4.5.0 + springdoc 2.3.0 全部对齐 Boot 3.2 | Boot 3.5 可能仍有其他冲突 |
+| B. 用更新版 Knife4j | 查 4.6+/4.7+ 是否适配 springdoc 2.8 | 需实测验证 |
+
+**或者**：用 Swagger UI + ReDoc + Scalar 三选一（本项目现状，已够用）。
+
+#### 五、一句话
+
+```text
+看到 /doc.html + 左侧"Swagger Models/文档管理" + 分组数字徽标 = Knife4j
+它是企业标配的"Swagger 增强 UI"，但 Boot 3.5 上与 springdoc 版本敏感
+```
+
+### 12.6 @Schema 的写法策略、企业流程与自动化边界（Q5 · 2026-10-25）
+
+#### 一、写法策略：不是"越多越好"
+
+| 策略 | 做法 | 适用 |
+|---|---|---|
+| **A. 只写"非自明字段"**（推荐） | `title`/`name`/`id` 不写；`idempotencyKey`/`executionMode` 写 | 多数团队 |
+| B. 对外 DTO 全写 | Controller 出入参每字段都写 | 有前端对接 |
+| C. 全量 + CI 校验 | 加覆盖率检查 | 银行/支付 |
+
+**判断标准：字段名能不能自解释**
+
+```java
+@Schema(description = "任务标题") String title;          // ❌ 白写
+@Schema(description = "幂等键：相同 key 重复提交只创建一次，重放首次结果")
+String idempotencyKey;                                   // ✅ 必须写
+```
+
+**本项目 44 处中约 15 处属"白写"**（`title`/`goal`/`id` 类）。
+
+#### 二、企业真实流程
+
+```text
+① DTO：字段名 + Javadoc + 校验注解
+② 必做：类上 @Tag + 方法上 @Operation
+③ 字段说明分团队规模：
+   小团队（<5 人）  → 只写非自明字段
+   中团队          → 对外 DTO 全写（AI 生成 + 人工核业务）
+   大公司          → 全写 + CI 覆盖率 + Javadoc 一致性检查
+④ CI：openapi-diff 拦 breaking change；统计 description 覆盖率
+⑤ 发布：spec 归档 / 上传 Apifox / 生成前端类型
+```
+
+**企业最头疼的矛盾**：同一份信息写两遍（Javadoc + `@Schema`）。
+
+```java
+/** 幂等键：相同 key 重复提交只创建一次 */        ← Javadoc（IDE 看）
+@Schema(description = "幂等键：相同 key 重复提交只创建一次")  ← 重复
+String idempotencyKey;
+```
+
+#### 三、能自动生成吗（三个层次）
+
+| 层次 | 方案 | 成熟度 |
+|---|---|---|
+| 1. Javadoc → `@Schema` | 编译期/构建期自动转换 | ❌ **Java 生态无主流稳定工具**（注释在工具链外，注解是编译期元数据，两者不通） |
+| 2. 数据库 → 实体注解 | JPA Buddy / MyBatis Generator / jOOQ codegen | ⚠️ 只能生成结构（`@Column`），**生成不了业务语义** |
+| 3. **AI 辅助生成** | LLM 读 DTO + Javadoc → 生成 `@Schema` | ✅ **2025 年企业实际做法**（本项目这 44 处即 AI 生成） |
+
+**AI 辅助的风险**：会"编"业务含义（把 `idempotencyKey` 理解成主键）→ **必须人工核**。
+
+#### 四、终极方案：契约优先（Design First）
+
+```text
+openapi.yaml（唯一真相）
+  ↓ openapi-generator
+Java 接口 + DTO（自动生成，自带 @Schema）
+  ↓
+前端 TS 类型（自动生成）
+```
+
+| 优点 | 缺点 |
+|---|---|
+| 文档永远最新（它就是源头） | 改接口先改 yaml，流程重 |
+| 前后端可并行 | 小团队受不了 |
+| 天然支持多语言客户端 | 学习成本高 |
+
+**判断**：接口 > 30 或前后端团队 > 10 人 → 值得上；小项目注解够用。
+
+#### 五、反直觉的点：`example` 比 `description` 更有价值
+
+```java
+// 只有 description：前端知道"这是执行模式"，但不知道填什么
+@Schema(description = "执行模式：SYNC 同步 / ASYNC 异步")
+
+// 有 example：前端能直接复制
+@Schema(description = "执行模式", example = "ASYNC")
+```
+
+| 字段 | 价值 |
+|---|---|
+| `description` | 给人读的一句话 |
+| **`example`** | **前端能 copy、Mock 能生成、测试能断言** |
+
+**优化建议（本项目）**：
+
+| 现状 | 动作 |
+|---|---|
+| `title` 写了 `@Schema(description="任务标题")` | **删掉**（自明） |
+| `idempotencyKey` 长说明 + example | 保留 |
+| `executionMode` 枚举说明 | 保留（example 比枚举列表直观） |
+
+#### 六、一句话
+
+```text
+写法：只写非自明字段（不是越多越好）
+自动：Javadoc→@Schema 无成熟工具；实际靠 AI 生成 + 人工核
+终极：接口多了上「契约优先」，让文档成为源头而非副产品
+技巧：example 比 description 更有用
 ```

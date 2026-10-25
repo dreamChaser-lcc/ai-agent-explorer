@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Research Agent API · ReDoc</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #fallback { padding: 24px; color: #b45309; background: #fffbeb; border-bottom: 1px solid #fde68a; }
+    #fallback code { background: #fef3c7; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <!--
+    ReDoc 2.1.5（离线）：三栏文档式 UI
+    · redoc.js 已下载到 static/（0.87 MB，UMD 版）
+    · 用 Redoc.init(specUrl, options, element) 显式初始化（最稳，不依赖 <redoc> 自定义元素）
+    · 特点：只读、右侧模型栏常驻、字段表格紧凑
+  -->
+  <div id="fallback" style="display:none">
+    ReDoc 初始化失败：确认 <code>/redoc.js</code> 可访问（应为 0.87 MB 的 UMD 文件），
+    且 <code>/v3/api-docs</code> 能返回 spec。打开浏览器控制台可看到具体报错。
+  </div>
+
+  <div id="redoc-container"></div>
+
+  <script src="/redoc.js"></script>
+  <script>
+    (function () {
+      function boot() {
+        var box = document.getElementById('redoc-container');
+        if (!window.Redoc || typeof window.Redoc.init !== 'function') {
+          document.getElementById('fallback').style.display = 'block';
+          return;
+        }
+        window.Redoc.init('/v3/api-docs', {
+          expandResponses: '200',
+          hideDownloadButton: true,
+          pathInMiddlePanel: false,
+          theme: {
+            colors: { primary: { main: '#3b82f6' } }
+          }
+        }, box);
+      }
+      if (document.readyState === 'complete') {
+        boot();
+      } else {
+        window.addEventListener('load', boot);
+      }
+    })();
+  </script>
+</body>
+</html>
