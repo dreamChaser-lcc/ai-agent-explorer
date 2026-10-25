@@ -724,3 +724,84 @@ Caused by: java.lang.ClassFormatError: Extra bytes at the end of class file
 **解法**：`mvn clean` 彻底删 target 后重新 `compile`（不是增量编译）。
 
 **判断**：`COMPILE=0` 只代表"编译没报错"，不代表"class 文件完整"——启动时才暴露。
+
+---
+
+## 十四、"Unable to determine Dialect" 的误导性（2026-10-25 实战）
+
+### 现象
+
+```text
+BeanCreationException: Error creating bean 'entityManagerFactory'
+  → ServiceException: Unable to create requested service [JdbcEnvironment]
+    → HibernateException: Unable to determine Dialect without JDBC metadata
+       (please set 'jakarta.persistence.jdbc.url' or 'hibernate.dialect')
+```
+
+### 错误信息在误导
+
+Hibernate 确定方言的真实顺序：
+
+```text
+① 建立 JDBC 连接
+② 读数据库元数据（版本/产品名）
+③ 推断方言（H2Dialect / PostgreSQLDialect）
+
+① 失败 → ② 拿不到 → 就说"推断不出方言"
+但它只报了第 ③ 步的现象，没说第 ① 步已经失败
+```
+
+**类比**：体温计显示不出度数 ≠ 没发烧，可能是体温计坏了。而错误信息却建议"换个刻度"（配 dialect），方向错了。
+
+### 正确排查姿势
+
+```text
+❌ 别急着配 hibernate.dialect（配了照样失败，连接还是建不起来）
+
+✅ 往上找【最初的 Caused by】，看连接为什么失败：
+   file is locked              → H2 文件被其他 JVM 占用
+   Connection refused          → 数据库没起 / 端口不对
+   Access denied for user      → 账号密码错
+   Unknown database            → 库不存在
+   Communications link failure → 网络不通
+```
+
+**日志里搜这些关键字**：`file is locked` / `HikariPool` / `Connection refused` / `Database may be already in use`。
+
+### 本次真实病因
+
+```text
+另一个 JVM（PID 28444）持有 H2 文件锁：
+  data/h2db/research-agent.mv.db  ← 文件正由另一进程使用
+→ 连接建不起来 → 推不出方言
+```
+
+### 解法
+
+```powershell
+Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+# 再启动
+```
+
+### 想彻底避开文件锁：改内存库
+
+```powershell
+mvn spring-boot:run "-Dspring-boot.run.profiles=dev" `
+  "-Dspring-boot.run.arguments=--spring.datasource.url=jdbc:h2:mem:research-agent;MODE=PostgreSQL;DB_CLOSE_DELAY=-1" `
+  -Dmaven.test.skip=true
+```
+
+| | 文件库（默认） | 内存库 |
+|---|---|---|
+| 数据持久 | ✅ 重启还在 | ❌ 重启清空 |
+| 多实例 | ❌ 文件锁冲突 | ✅ 互不影响 |
+| 适合 | 看历史数据 | 纯看文档/跑接口 |
+
+### 一句话
+
+```text
+"Unable to determine Dialect" 是【症状】，不是【病因】
+  病因永远在更深的 Caused by 里（连接为什么失败）
+顺序：连接 → 元数据 → 方言；连不上就永远推不出方言
+```
