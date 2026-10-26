@@ -29,6 +29,22 @@ public class BodyCachingFilter extends OncePerRequestFilter {
     /** 日志里 body 的最大长度（防止大 body 刷爆日志）。 */
     private static final int MAX_LOG_LENGTH = 160;
 
+    /**
+     * 跳过 H2 Console（2026-10-26 修复）：
+     *
+     * <p>H2 Console 的登录表单是 application/x-www-form-urlencoded，它依赖容器的
+     * {@code getParameter("url")} 解析表单。但 Tomcat 的规则是【流一旦被读取就不再解析参数】——
+     * CachedBodyHttpServletRequest 只重写了 getInputStream()，没有重写 getParameter 系列，
+     * 于是 H2 Console 拿到的 url 是空字符串 → 报
+     * "No suitable driver found for "（URL 为空，2026-10-25/26 实测反复踩坑）。</p>
+     *
+     * <p>H2 Console 是框架页面而非业务接口，直接跳过最安全；业务接口继续走缓存包装。</p>
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/h2-console");
+    }
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

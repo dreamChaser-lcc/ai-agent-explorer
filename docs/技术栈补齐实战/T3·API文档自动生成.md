@@ -832,7 +832,54 @@ Start-Sleep -Seconds 3
 # 再启动
 ```
 
-### 想彻底避开文件锁：改内存库
+### 想彻底避开文件锁：三种方案（2026-10-26 实测）
+
+> **本项目最终选择**：**启动前杀进程**（已写进 [`start-dev.ps1`](../../backend/start-dev.ps1) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/start-dev.ps1)）。
+> `AUTO_SERVER=TRUE` 曾试过并验证可行，但**已回退**——本地开发场景下，脚本自动清理更简单、不改变数据库语义。下面三种方案都保留作知识记录。
+
+#### 方案 A：启动前杀进程（★ 本项目采用）
+
+```powershell
+# 按端口精确杀（不要全杀 java，会误伤 IDE）
+$lines = netstat -ano | Select-String ":8080\s" | Select-String "LISTENING"
+$pids = $lines | ForEach-Object { ($_.Line -split '\s+')[-1] } | Sort-Object -Unique
+foreach ($processId in $pids) { Stop-Process -Id $processId -Force }
+```
+
+**为什么选它**：
+- 零配置改动（不动 `application-dev.yml`）
+- 同时解决两类问题（端口冲突 + H2 文件锁）
+- 副作用可控（按端口杀，不误伤 IDEA）
+
+**代价**：每次启动会打断上一个实例（本来也该停）。
+
+#### 方案 B：`AUTO_SERVER=TRUE`（已验证，未采用）
+
+H2 的三种连接模式：
+
+| 模式 | URL 特征 | 多进程 |
+|---|---|---|
+| **嵌入式（默认）** | `jdbc:h2:file:./data/xxx` | ❌ 文件独占，"The file is locked" |
+| **自动服务器** | 加 `;AUTO_SERVER=TRUE` | ✅ 第一个进程起 TCP 服务，后续走 TCP 连同一个库 |
+| 纯服务器 | `jdbc:h2:tcp://host:port/...` | ✅ 但要先手工启动 H2 Server |
+
+**曾改过**（2026-10-26，已回退）：
+
+```yaml
+url: jdbc:h2:file:${user.dir}/data/h2db/research-agent;AUTO_SERVER=TRUE;MODE=PostgreSQL;...
+```
+
+**实测（2026-10-26）**：
+
+```text
+实例 1（8080，PID 32872）→ Started，生成 research-agent.lock.db（记录 TCP 端口）
+实例 2（8081，PID 45296）→ Started in 7.993s，无 file is locked
+两个实例 /api/health 均返回 status=ok
+```
+
+**代价**：多一层 TCP 开销（开发环境可忽略）；生产不用 H2 文件库。
+
+#### 方案 C：改内存库（数据不保留）
 
 ```powershell
 mvn spring-boot:run "-Dspring-boot.run.profiles=dev" `
@@ -840,11 +887,15 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev" `
   -Dmaven.test.skip=true
 ```
 
-| | 文件库（默认） | 内存库 |
-|---|---|---|
-| 数据持久 | ✅ 重启还在 | ❌ 重启清空 |
-| 多实例 | ❌ 文件锁冲突 | ✅ 互不影响 |
-| 适合 | 看历史数据 | 纯看文档/跑接口 |
+#### 四种方案对比
+
+| | 嵌入式（默认） | **杀进程（采用）** | AUTO_SERVER（未采用） | 内存库 |
+|---|---|---|---|---|
+| 数据持久 | ✅ | ✅ | ✅ | ❌ |
+| 多实例共存 | ❌ | ⚠️ 串行（先杀后启） | ✅ 真并行 | ✅（各存各的） |
+| 配置改动 | — | **无（脚本里做）** | 一行 url | 启动参数 |
+| 风险 | 文件锁报错 | 会打断上一个实例 | 多一层 TCP | 数据丢失 |
+| 适合 | 单开 | **日常开发（本项目）** | 需要真并行多开 | 纯看文档/跑接口 |
 
 ### 一句话
 
