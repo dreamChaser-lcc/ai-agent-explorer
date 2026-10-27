@@ -2,7 +2,7 @@
   color-scheme: dark;
   /* 中文字体回退必须写在前面兜底，否则 Windows 上中文会渲染成宋体 */
   font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-  background: #0b1020;
+  background: #0a0e1a;
   color: #e5eefc;
 }
 
@@ -10,10 +10,38 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  min-height: 100vh;
-  background: linear-gradient(180deg, #0b1020 0%, #111938 100%);
+  /* 布局滚动收口到 .app-shell / .content，页面级不出现双滚动条 */
+  height: 100%;
+  overflow: hidden;
+  background: #0a0e1a;
+}
+
+/* 主流深色仪表盘底色：两片径向光晕叠加，静态不参与动画 */
+body::before {
+  content: "";
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(91, 140, 255, 0.13) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  right: -15%;
+  bottom: -25%;
+  width: 55vw;
+  height: 55vw;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(53, 213, 154, 0.07) 0%, transparent 60%);
+  pointer-events: none;
 }
 
 /* 深色细滚动条，替代默认的白色粗滚动条 */
@@ -42,25 +70,32 @@ a {
   text-decoration: none;
 }
 
+/* ===================== 布局骨架：侧栏固定、主区独立滚动 ===================== */
+
 .app-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
-  min-height: 100vh;
+  grid-template-columns: 250px minmax(0, 1fr);
+  height: 100vh;
 }
 
 .sidebar {
-  padding: 24px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(6, 10, 24, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  /* 侧栏自身滚动，内容再长也不影响主区 */
+  overflow-y: auto;
+  background: rgba(6, 10, 24, 0.92);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  margin-bottom: 24px;
-  font-size: 20px;
+  margin: 0 8px 28px;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  color: #ffffff;
 }
 
 /* 品牌名前的蓝色圆点，纯装饰 */
@@ -77,12 +112,17 @@ a {
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
+/* 侧栏导航项：主流仪表盘的圆角块状入口 */
 .nav a {
-  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  padding: 11px 12px;
   border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
   color: #c9d8f7;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -92,32 +132,57 @@ a {
   color: #ffffff;
 }
 
+.nav a.active {
+  background: rgba(91, 140, 255, 0.18);
+  color: #ffffff;
+}
+
 .nav-hint {
-  margin-top: 4px;
-  padding-left: 12px;
+  margin: 12px 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   font-size: 13px;
-  color: #9fb2d5;
+  color: #8296bd;
   line-height: 1.6;
 }
 
+/* 主内容区：唯一的页面级滚动容器 */
 .content {
-  padding: 32px;
+  overflow-y: auto;
+  padding: 36px 40px 48px;
   /* 允许内容区收窄，配合子面板的 min-width: 0 防溢出 */
   min-width: 0;
 }
 
+/* ===================== 页面通用 ===================== */
+
 .page {
   display: flex;
   flex-direction: column;
+  /* 旧浏览器回退：无 gap 支持时用底边距撑开 */
   gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
   /* 面板内容过长时保持面板可收缩 */
   min-width: 0;
 }
 
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
 .page-header h1 {
   margin: 0 0 8px;
-  font-size: 28px;
-  letter-spacing: 0.02em;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.page-header .header-actions {
+  margin-bottom: 8px;
 }
 
 .page-header p,
@@ -130,14 +195,20 @@ a {
   overflow-wrap: break-word;
 }
 
+/* ===================== 面板与卡片 ===================== */
+
 .panel {
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  background: rgba(14, 22, 46, 0.7);
-  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  background: rgba(17, 26, 52, 0.75);
+  box-shadow: 0 8px 24px rgba(4, 8, 20, 0.35);
   /* grid/flex 子项默认 min-width:auto 会被长内容撑爆，这里显式放行收缩 */
   min-width: 0;
+}
+
+.panel + .panel {
+  margin-top: 24px;
 }
 
 .field {
@@ -149,27 +220,45 @@ a {
 .field span,
 .panel h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+  color: #dbe7ff;
 }
+
+/* 表单行距（替代 gap 的兼容写法） */
+.field + .field,
+.field + .radio-field,
+.field + .error-message,
+.panel .field:first-child {
+  margin-top: 18px;
+}
+
+.radio-field {
+  margin-top: 18px;
+}
+
+/* ===================== 表单控件 ===================== */
 
 textarea {
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
+  padding: 13px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   background: rgba(9, 15, 30, 0.85);
   color: inherit;
+  font-size: 14px;
+  line-height: 1.6;
   resize: vertical;
 }
 
 input {
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
+  padding: 13px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   background: rgba(9, 15, 30, 0.85);
   color: inherit;
+  font-size: 14px;
 }
 
 /* 输入聚焦高亮：用光圈替代默认 outline，视觉更柔和 */
@@ -185,10 +274,13 @@ textarea::placeholder {
   color: #66799e;
 }
 
+/* ===================== 栅格 ===================== */
+
 .radio-grid,
 .grid {
   display: grid;
-  gap: 16px;
+  /* 兼容写法：不支持 gap 的环境靠列间距兜底 */
+  grid-gap: 16px;
 }
 
 .radio-grid {
@@ -196,7 +288,13 @@ textarea::placeholder {
 }
 
 .grid {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* 兼容写法：旧浏览器不支持 gap 时用底边距 */
+  margin-bottom: -24px;
+}
+
+.grid > .panel {
+  margin-bottom: 24px;
 }
 
 /* 关键防溢出：grid 单元格允许收缩到内容宽度以下 */
@@ -204,12 +302,34 @@ textarea::placeholder {
   min-width: 0;
 }
 
+/* 最近任务列：限制高度、内部滚动，列表再长也不把整页撑高 */
+.scroll-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
+}
+
+.scroll-panel .section-header {
+  flex-shrink: 0;
+}
+
+.scroll-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* 滚动区与标题之间留出呼吸感 */
+  margin-top: 4px;
+  padding-right: 6px;
+}
+
+/* ===================== 单选卡片 ===================== */
+
 .radio-card {
   display: flex;
   gap: 12px;
-  padding: 16px;
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border-radius: 12px;
   background: rgba(9, 15, 30, 0.6);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -237,6 +357,12 @@ textarea::placeholder {
   outline-offset: 2px;
 }
 
+.radio-card p {
+  font-size: 13px;
+}
+
+/* ===================== 按钮 ===================== */
+
 .button-row {
   display: flex;
   gap: 12px;
@@ -253,8 +379,8 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 18px;
-  border-radius: 12px;
+  padding: 10px 18px;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
   font-weight: 600;
@@ -268,17 +394,25 @@ textarea::placeholder {
   cursor: not-allowed;
 }
 
+.primary-button {
+  background: #5b8cff;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(91, 140, 255, 0.28);
+}
+
 .primary-button:hover:not(:disabled) {
   background: #6f9bff;
 }
 
 .secondary-button {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   color: #e5eefc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .secondary-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .primary-button:active:not(:disabled),
@@ -286,31 +420,37 @@ textarea::placeholder {
   transform: translateY(1px);
 }
 
+/* ===================== 状态徽章 ===================== */
+
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   /* 状态名可能很长（WAITING_FOR_CONFIRMATION），不许撑破标题行 */
   white-space: nowrap;
   flex-shrink: 0;
+  border: 1px solid transparent;
 }
 
 .badge.waiting {
-  background: rgba(255, 196, 61, 0.18);
+  background: rgba(255, 196, 61, 0.14);
+  border-color: rgba(255, 196, 61, 0.3);
   color: #ffd56a;
 }
 
 .badge.completed {
-  background: rgba(53, 213, 154, 0.18);
+  background: rgba(53, 213, 154, 0.14);
+  border-color: rgba(53, 213, 154, 0.3);
   color: #35d59a;
 }
 
 .badge.running {
-  background: rgba(91, 140, 255, 0.18);
+  background: rgba(91, 140, 255, 0.14);
+  border-color: rgba(91, 140, 255, 0.3);
   color: #7aa6ff;
 }
 
@@ -318,15 +458,19 @@ textarea::placeholder {
 .badge.queued,
 .badge.planning,
 .badge.draft {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
   color: #d1def7;
 }
 
 .badge.cancelled,
 .badge.failed {
-  background: rgba(255, 120, 120, 0.18);
+  background: rgba(255, 120, 120, 0.14);
+  border-color: rgba(255, 120, 120, 0.3);
   color: #ff9494;
 }
+
+/* ===================== 时间线 ===================== */
 
 .timeline {
   display: flex;
@@ -377,6 +521,8 @@ textarea::placeholder {
   background: #7283a7;
 }
 
+/* ===================== 区块与详情 ===================== */
+
 .section-header {
   display: flex;
   align-items: center;
@@ -393,34 +539,39 @@ textarea::placeholder {
 .detail-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 14px;
+  grid-gap: 14px;
   margin-top: 16px;
 }
 
 .detail-list strong {
   display: block;
   margin-bottom: 4px;
+  font-size: 13px;
+  color: #8296bd;
 }
+
+/* ===================== 任务列表 ===================== */
 
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
 .task-card {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  border-radius: 12px;
   background: rgba(9, 15, 30, 0.55);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .task-card:hover {
   border-color: rgba(91, 140, 255, 0.35);
+  transform: translateY(-1px);
 }
 
 .task-card-header {
@@ -435,13 +586,15 @@ textarea::placeholder {
   /* 标题优先占空间，但遇到超长无空格标题也能断行 */
   min-width: 0;
   overflow-wrap: anywhere;
+  font-size: 15px;
+  color: #ffffff;
 }
 
 /* 编号 / UUID 等机器标识：等宽字体 + 任意位置断行 */
 .mono-text {
   font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
-  font-size: 13px;
-  color: #9fb2d5;
+  font-size: 12px;
+  color: #8296bd;
   word-break: break-all;
 }
 
@@ -453,7 +606,7 @@ textarea::placeholder {
   margin: 0;
   padding: 12px 14px;
   border: 1px solid rgba(255, 120, 120, 0.28);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 120, 120, 0.1);
   color: #ff9494;
   word-break: break-word;
@@ -480,7 +633,7 @@ textarea::placeholder {
   margin: 0;
   padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(6, 10, 24, 0.65);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
@@ -492,20 +645,29 @@ textarea::placeholder {
   text-decoration: none;
 }
 
-/* 窄屏响应：侧栏折叠为顶部横条，内容区收紧 */
+/* ===================== 响应式 ===================== */
+
 @media (max-width: 960px) {
+  html,
+  body {
+    overflow: auto;
+    height: auto;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .sidebar {
-    padding: 16px 20px;
+    overflow: visible;
+    padding: 14px 20px;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .brand {
-    margin-bottom: 12px;
+    margin: 0 0 10px;
   }
 
   .nav {
@@ -518,6 +680,16 @@ textarea::placeholder {
   }
 
   .content {
+    overflow: visible;
     padding: 20px;
+  }
+
+  .scroll-panel {
+    max-height: none;
+  }
+
+  .scroll-panel-body {
+    overflow: visible;
+    padding-right: 0;
   }
 }

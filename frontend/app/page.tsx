@@ -85,8 +85,10 @@ export default function HomePage() {
   return (
     <section className="page">
       <header className="page-header">
-        <h1>创建研究任务</h1>
-        <p>输入研究目标后，系统会先生成研究计划，待你确认后再执行完整研究流程。</p>
+        <div>
+          <h1>创建研究任务</h1>
+          <p>输入研究目标后，系统会先生成研究计划，待你确认后再执行完整研究流程。</p>
+        </div>
       </header>
 
       <div className="grid">
@@ -110,7 +112,7 @@ export default function HomePage() {
             />
           </label>
 
-          <div className="field">
+          <div className="field radio-field">
             <span>执行模式</span>
             <div className="radio-grid">
               {executionModes.map((mode) => (
@@ -138,7 +140,7 @@ export default function HomePage() {
           </button>
         </form>
 
-        <section className="panel">
+        <section className="panel scroll-panel">
           <div className="section-header">
             <h2>最近任务</h2>
             <button
@@ -150,68 +152,70 @@ export default function HomePage() {
             </button>
           </div>
 
-          {isLoadingTasks ? <p className="muted-text">正在加载任务列表...</p> : null}
+          <div className="scroll-panel-body">
+            {isLoadingTasks ? <p className="muted-text">正在加载任务列表...</p> : null}
 
-          {!isLoadingTasks && tasks.length === 0 ? (
-            <p className="muted-text">还没有任务，先创建一个研究任务吧。</p>
-          ) : null}
+            {!isLoadingTasks && tasks.length === 0 ? (
+              <p className="muted-text">还没有任务，先创建一个研究任务吧。</p>
+            ) : null}
 
-          <ul className="task-list">
-            {tasks.map((task) => (
-              <li key={task.id} className="task-card">
-                <div className="task-card-header">
-                  <strong>{task.title}</strong>
-                  <span className={`badge ${task.status.toLowerCase()}`}>{task.status}</span>
-                </div>
-                <p className="mono-text">{task.taskNo}</p>
-                <p>
-                  模式：{task.executionMode} · 阶段：{task.currentStage}
+            <ul className="task-list">
+              {tasks.map((task) => (
+                <li key={task.id} className="task-card">
+                  <div className="task-card-header">
+                    <strong>{task.title}</strong>
+                    <span className={`badge ${task.status.toLowerCase()}`}>{task.status}</span>
+                  </div>
+                  <p className="mono-text">{task.taskNo}</p>
+                  <p>
+                    模式：{task.executionMode} · 阶段：{task.currentStage}
+                  </p>
+                  <div className="button-row compact">
+                    <button
+                      className="secondary-button"
+                      onClick={() => router.push(`/tasks/${task.id}`)}
+                      type="button"
+                    >
+                      查看详情
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => router.push(`/reports/${task.id}`)}
+                      type="button"
+                    >
+                      查看报告
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {pageState.totalPages > 1 ? (
+              <>
+                <p className="muted-text">
+                  第 {pageState.currentPage + 1} / {pageState.totalPages} 页 · 共 {pageState.totalElements} 条
                 </p>
                 <div className="button-row compact">
                   <button
                     className="secondary-button"
-                    onClick={() => router.push(`/tasks/${task.id}`)}
+                    disabled={pageState.currentPage <= 0}
+                    onClick={() => void loadTasks(pageState.currentPage - 1)}
                     type="button"
                   >
-                    查看详情
+                    上一页
                   </button>
                   <button
                     className="secondary-button"
-                    onClick={() => router.push(`/reports/${task.id}`)}
+                    disabled={pageState.currentPage >= pageState.totalPages - 1}
+                    onClick={() => void loadTasks(pageState.currentPage + 1)}
                     type="button"
                   >
-                    查看报告
+                    下一页
                   </button>
                 </div>
-              </li>
-            ))}
-          </ul>
-
-          {pageState.totalPages > 1 ? (
-            <>
-              <p className="muted-text">
-                第 {pageState.currentPage + 1} / {pageState.totalPages} 页 · 共 {pageState.totalElements} 条
-              </p>
-              <div className="button-row compact">
-                <button
-                  className="secondary-button"
-                  disabled={pageState.currentPage <= 0}
-                  onClick={() => void loadTasks(pageState.currentPage - 1)}
-                  type="button"
-                >
-                  上一页
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={pageState.currentPage >= pageState.totalPages - 1}
-                  onClick={() => void loadTasks(pageState.currentPage + 1)}
-                  type="button"
-                >
-                  下一页
-                </button>
-              </div>
-            </>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </section>
       </div>
     </section>

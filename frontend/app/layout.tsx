@@ -14,6 +14,7 @@ type RootLayoutProps = {
 
 /**
  * 定义前端应用的全局布局壳子。
+ * 侧栏固定不随主内容滚动，任何页面都能通过侧栏回到任务创建页。
  */
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
@@ -21,11 +22,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body>
         <div className="app-shell">
           <aside className="sidebar">
-            <div className="brand">Research Agent</div>
+            <Link className="brand" href="/">
+              Research Agent
+            </Link>
             <nav className="nav">
               <Link href="/">任务创建</Link>
-              <span className="nav-hint">创建任务后可进入详情页和报告页。</span>
             </nav>
+            <span className="nav-hint">创建任务后可进入详情页和报告页；左侧入口随时可回到本页。</span>
           </aside>
           <main className="content">{children}</main>
         </div>
