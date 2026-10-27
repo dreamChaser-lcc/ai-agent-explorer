@@ -317,3 +317,81 @@ spring:
       idle-timeout: 600000
       max-lifetime: 1800000
 ```
+
+---
+
+## 补充：@PersistenceContext 与 EntityManager（2026-10-27 课堂问答）
+
+> 学员在异常翻译 demo 里问："`@PersistenceContext` 这个是什么作用"
+
+### 一、一句话
+
+```text
+@PersistenceContext = 告诉容器"把 EntityManager 注入进来，生命周期你管"
+注入的不是普通 bean，而是【事务感知的代理】——每次调用时自动绑定"当前事务"
+```
+
+### 二、EntityManager 是什么（JPA 的数据库操作总入口）
+
+| 操作 | 方法 |
+|---|---|
+| 插入 / 更新 | persist / merge |
+| 按主键查 | find |
+| 查询 / 原生 SQL | createQuery / createNativeQuery |
+| 立刻发 SQL | flush |
+
+背后是 **Persistence Context（持久化上下文）**：一级缓存 + 脏检查 + 实体身份。
+EntityManager 就是操作它的门面。
+
+### 三、@PersistenceContext 做的三件事
+
+```text
+① 注入代理（不是真货）：字段上是共享代理（SharedEntityManagerCreator 生成）
+   真 EntityManager 每个事务一个，用完即毁
+② 事务绑定：同事务的多次调用 → 转发到同一个真实例
+   → 一级缓存 / 脏检查 / 实体身份生效；跨事务隔离
+③ 生命周期托管：创建/绑定事务/flush/销毁全是容器的事，从不 close()
+```
+
+### 四、为什么不用 @Autowired / 构造器
+
+| 问法 | 答案 |
+|---|---|
+| @Autowired 行不行 | Spring Boot 里也能注入同样代理，但那是 Spring 方言 |
+| @PersistenceContext | JPA 标准注解（jakarta.persistence），跨容器通用、语义明确 |
+| 为什么字段注入 | 它是事务级代理，不是单例不可变依赖；
+  字段 + @PersistenceContext 是 JPA 惯例——字段注入的少数正当场景
+  （SP1 的"构造器优先"在此是例外） |
+
+### 五、前端类比
+
+```javascript
+// EntityManager 代理 ≈ 配好的 axios 实例：
+// 永远拿一个实例，但每次请求时拦截器自动绑定"当前会话 token"
+entityManager.createNativeQuery(...)   // 此刻绑定"当前事务"的真实例
+```
+
+### 六、在 demo 里的角色
+
+```java
+@PersistenceContext
+private EntityManager entityManager;   // 异常源头
+
+entityManager.createNativeQuery("SELECT * FROM 不存在的表").getResultList();
+→ 底层抛 Hibernate 家族异常 → @Repository 版翻译 / @Component 版不翻译
+```
+
+### 七、项目对照
+
+```text
+@PersistenceContext = 2 处（恰好是两个 demo DAO）
+业务代码几乎见不到它 → 因为 Spring Data 把 EntityManager 封装在
+SimpleJpaRepository 里；自己注入 EntityManager = 手写 JPA DAO 的场景
+```
+
+### 一句话
+
+```text
+@Repository 管"异常翻译"，@PersistenceContext 管"给我一个跟事务走的 EntityManager"
+两个都是"我不自己管理，交给框架"思想的注解
+```

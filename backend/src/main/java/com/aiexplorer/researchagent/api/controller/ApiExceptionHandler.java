@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -103,6 +104,27 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ApiError handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
         return ApiError.of("NOT_FOUND", "请求的资源不存在", request.getRequestURI());
+    }
+
+    /**
+     * ★ J4/J7 演示（2026-10-27）：数据访问异常的统一接待——@Repository 翻译链的下游。
+     *
+     * <p>catch 的是【根类 DataAccessException】——J4 规则②的活例子：
+     * 父类 handler 能接住整棵 Spring DAO 树（InvalidDataAccessResourceUsage /
+     * DataIntegrityViolation / DuplicateKey ... 全是它的子类）。</p>
+     *
+     * <p>不会抢走下面两个更具体的 409 handler——J4 §9"最具体优先"。</p>
+     *
+     * <p>前提：DAO 标了 @Repository（或用 Spring Data 接口，实现类自带标注），
+     * 异常才会被翻译到这棵树上；否则抛的是 Hibernate 原生异常（不在本树），
+     * 这里接不住，落到 Exception 兜底 500。（对照端点 /api/demo/translate/*）</p>
+     */
+    @ExceptionHandler(DataAccessException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiError handleDataAccessException(DataAccessException exception, HttpServletRequest request) {
+        return ApiError.of("DATA_ACCESS_ERROR",
+                "数据访问失败：" + exception.getMostSpecificCause().getMessage(),
+                request.getRequestURI());
     }
 
     /**
