@@ -536,3 +536,48 @@ LlmClientConfiguration → LlmClient → LlmCallGuard → LlmPlanGenerator → R
 | **Q4** | "构造函数的参数从注册过 bean 里找，@Component/@Service 注册为 bean，所以会有 @Qualifier/@Primary，还有循环依赖，是这个意思吗" | 前半 ✅（bean 来源清单见下）；**后半需纠正**：多候选 → `@Primary`/`@Qualifier`（SP1 实验③）；**循环依赖的成因是"依赖成环"（A→B→A），与候选数量无关**（即使全容器只有 A、B 两个 bean 也爆炸）。另澄清"注册过 ≠ 已创建"——注册阶段只登记 BeanDefinition，实例化阶段按依赖排序（被依赖的先建），成环则排不出顺序。 |
 | **Q5** | "构造器参数从哪来：容器在 new 时传进去的——这个回答不够正确，应该是所有已注册的 bean 吧？我知道是容器 new 时传入的，只是传入的值从哪来" | **学员指出讲解未答到点**（问的是"值从哪来"，答成了"何时传入"）。已在 §3.4 ① 重写为 **★★ 核心机制**：**值是"容器管理的所有已注册 bean 中，按类型匹配到的实例"**；容器两张表（`beanDefinitionMap` 图纸 / `singletonObjects` 实例）；**还没创建时容器先递归创建它再传入**；来源清单（@Component 家族 / @Bean / 自动配置 / @Import）。 |
 | **Q6** | "`@Component class A { A(B b) }` / `@Component class B { B(A a) }` 这种循环依赖可以怎么解" | 本文 §6.5「构造器循环依赖的四种解法」——**三级缓存救不了构造器注入**，必须改：① **抽第三个类**（最推荐，环是设计信号）② `@Lazy` 一方（代理占位、延迟创建，应急）③ 改字段注入（三级缓存可救，不推荐）④ 事件解耦（双向通知场景）；附对比表与项目"单向依赖链"示范。 |
+
+### 补充：bean 作用域 singleton / prototype（2026-10-27 课堂问答）
+
+#### 一、两种核心作用域
+
+| 作用域 | 行为 | 默认 |
+|---|---|---|
+| **singleton** | 整个容器只有一个实例，所有注入者共享同一个 | ✅ 默认 |
+| **prototype** | 每次 getBean() 都新建一个实例 | |
+
+（Web 环境另有 request / session / application，日常极少用）
+
+#### 二、项目实测：@Scope = 0 处
+
+```text
+全项目所有 bean（32 @Component + 19 @Service + 4 @Repository + ...）
+一个 @Scope 都没标 → 100% singleton
+```
+
+**为什么 singleton 够用**：bean 是【无状态】的——
+Service/Controller 不把"某次请求的数据"存在字段里，数据全部走方法参数 →
+多线程共享同一个实例也安全。
+
+**反例（经典事故）**：如果 Service 写了 `private User currentUser;` 存"当前用户"
+→ 并发下 A 请求的数据会被 B 看到 → 隐蔽事故。
+
+#### 三、prototype 的两个大坑
+
+1. **注入即定格**：singleton A 注入 prototype B → B 只注入一次，之后 A 用的
+   永远是同一个 B（想要"每次新的"得用 ObjectProvider<B> 或 @Lookup）。
+2. **容器不管销毁**：prototype 的 @PreDestroy 不会被 Spring 调用。
+
+#### 四、决策
+
+```text
+无状态组件（99% 场景）→ singleton（默认，什么都不用标）
+真有状态、每个使用者要独立副本 → 先考虑重新设计成无状态，
+                                   确实需要再用 prototype + ObjectProvider
+```
+
+#### 五、一句话
+
+```text
+Spring bean 默认全是单例 → 所以"bean 必须无状态"是铁律
+（本项目 0 处 @Scope 正是这个纪律的体现）
