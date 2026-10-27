@@ -24,6 +24,22 @@ export type TaskSummary = {
   updatedAt: string;
 };
 
+/**
+ * 后端通用分页响应壳，与 `PageResponse.java` 的字段一一对应。
+ */
+export type PageResponse<T> = {
+  /** 当前页数据列表 */
+  content: T[];
+  /** 当前页码（从 0 开始） */
+  page: number;
+  /** 每页条数（服务端上限 100） */
+  size: number;
+  /** 满足筛选条件的总条数 */
+  totalElements: number;
+  /** 总页数（服务端已向上取整） */
+  totalPages: number;
+};
+
 export type TaskDetail = {
   id: string;
   taskNo: string;
@@ -133,8 +149,28 @@ export async function createTask(input: {
   });
 }
 
-export async function listTasks() {
-  return request<TaskSummary[]>("/api/tasks");
+/**
+ * 分页查询任务列表（按创建时间倒序）。
+ * 不传分页参数时走后端默认值：page=0、size=20。
+ */
+export async function listTasks(params?: {
+  page?: number;
+  size?: number;
+  status?: TaskStatus;
+}) {
+  const searchParams = new URLSearchParams();
+
+  if (params?.page !== undefined) {
+    searchParams.set("page", String(params.page));
+  }
+  if (params?.size !== undefined) {
+    searchParams.set("size", String(params.size));
+  }
+  if (params?.status) {
+    searchParams.set("status", params.status);
+  }
+
+  return request<PageResponse<TaskSummary>>("/api/tasks", { searchParams });
 }
 
 export async function getTaskDetail(taskId: string) {

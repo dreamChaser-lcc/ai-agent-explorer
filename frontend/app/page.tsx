@@ -13,6 +13,9 @@ const executionModes: Array<{
   { label: "异步执行", value: "ASYNC", description: "适合长任务，后台持续执行" }
 ];
 
+/** 任务列表每页条数，与后端 PageResponse 的默认 size 保持一致 */
+const TASK_PAGE_SIZE = 20;
+
 /**
  * 渲染任务创建页，并展示最近的任务列表。
  */
@@ -22,6 +25,11 @@ export default function HomePage() {
   const [goal, setGoal] = useState("");
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("ASYNC");
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [pageState, setPageState] = useState({
+    currentPage: 0,
+    totalPages: 0,
+    totalElements: 0
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -34,10 +42,17 @@ export default function HomePage() {
     return title.trim().length > 0 && goal.trim().length > 0 && !isSubmitting;
   }, [goal, isSubmitting, title]);
 
-  async function loadTasks() {
+  async function loadTasks(targetPage = 0) {
     try {
       setIsLoadingTasks(true);
-      setTasks(await listTasks());
+      setErrorMessage("");
+      const pageResult = await listTasks({ page: targetPage, size: TASK_PAGE_SIZE });
+      setTasks(pageResult.content);
+      setPageState({
+        currentPage: pageResult.page,
+        totalPages: pageResult.totalPages,
+        totalElements: pageResult.totalElements
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载任务列表失败");
     } finally {
@@ -126,7 +141,11 @@ export default function HomePage() {
         <section className="panel">
           <div className="section-header">
             <h2>最近任务</h2>
-            <button className="secondary-button" onClick={() => void loadTasks()} type="button">
+            <button
+              className="secondary-button"
+              onClick={() => void loadTasks(pageState.currentPage)}
+              type="button"
+            >
               刷新
             </button>
           </div>
@@ -167,6 +186,32 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+
+          {pageState.totalPages > 1 ? (
+            <>
+              <p className="muted-text">
+                第 {pageState.currentPage + 1} / {pageState.totalPages} 页 · 共 {pageState.totalElements} 条
+              </p>
+              <div className="button-row compact">
+                <button
+                  className="secondary-button"
+                  disabled={pageState.currentPage <= 0}
+                  onClick={() => void loadTasks(pageState.currentPage - 1)}
+                  type="button"
+                >
+                  上一页
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={pageState.currentPage >= pageState.totalPages - 1}
+                  onClick={() => void loadTasks(pageState.currentPage + 1)}
+                  type="button"
+                >
+                  下一页
+                </button>
+              </div>
+            </>
+          ) : null}
         </section>
       </div>
     </section>
