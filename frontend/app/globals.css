@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, Arial, sans-serif;
+  /* 中文字体回退必须写在前面兜底，否则 Windows 上中文会渲染成宋体 */
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   background: #0b1020;
   color: #e5eefc;
 }
@@ -13,6 +14,27 @@ body {
   margin: 0;
   min-height: 100vh;
   background: linear-gradient(180deg, #0b1020 0%, #111938 100%);
+}
+
+/* 深色细滚动条，替代默认的白色粗滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.24);
 }
 
 a {
@@ -33,9 +55,23 @@ a {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
   margin-bottom: 24px;
   font-size: 20px;
   font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* 品牌名前的蓝色圆点，纯装饰 */
+.brand::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  margin-right: 10px;
+  border-radius: 999px;
+  background: #5b8cff;
+  box-shadow: 0 0 12px rgba(91, 140, 255, 0.9);
 }
 
 .nav {
@@ -44,7 +80,21 @@ a {
   gap: 12px;
 }
 
+.nav a {
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #c9d8f7;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav a:hover {
+  background: rgba(91, 140, 255, 0.14);
+  color: #ffffff;
+}
+
 .nav-hint {
+  margin-top: 4px;
+  padding-left: 12px;
   font-size: 13px;
   color: #9fb2d5;
   line-height: 1.6;
@@ -52,16 +102,22 @@ a {
 
 .content {
   padding: 32px;
+  /* 允许内容区收窄，配合子面板的 min-width: 0 防溢出 */
+  min-width: 0;
 }
 
 .page {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  /* 面板内容过长时保持面板可收缩 */
+  min-width: 0;
 }
 
 .page-header h1 {
   margin: 0 0 8px;
+  font-size: 28px;
+  letter-spacing: 0.02em;
 }
 
 .page-header p,
@@ -70,6 +126,8 @@ a {
 .panel p {
   margin: 0;
   color: #9fb2d5;
+  /* 任意长文本（长 URL、UUID、连续英文串）都在面板内断行 */
+  overflow-wrap: break-word;
 }
 
 .panel {
@@ -78,6 +136,8 @@ a {
   border-radius: 20px;
   background: rgba(14, 22, 46, 0.7);
   backdrop-filter: blur(12px);
+  /* grid/flex 子项默认 min-width:auto 会被长内容撑爆，这里显式放行收缩 */
+  min-width: 0;
 }
 
 .field {
@@ -112,6 +172,19 @@ input {
   color: inherit;
 }
 
+/* 输入聚焦高亮：用光圈替代默认 outline，视觉更柔和 */
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(91, 140, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.18);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #66799e;
+}
+
 .radio-grid,
 .grid {
   display: grid;
@@ -126,6 +199,11 @@ input {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+/* 关键防溢出：grid 单元格允许收缩到内容宽度以下 */
+.grid > * {
+  min-width: 0;
+}
+
 .radio-card {
   display: flex;
   gap: 12px;
@@ -133,6 +211,30 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   background: rgba(9, 15, 30, 0.6);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.radio-card:hover {
+  border-color: rgba(91, 140, 255, 0.4);
+  background: rgba(9, 15, 30, 0.85);
+}
+
+/* 修正：全局 input 样式会污染单选框，恢复成原生小圆点 */
+.radio-card input {
+  width: auto;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  margin: 4px 0 0;
+  flex-shrink: 0;
+  accent-color: #5b8cff;
+}
+
+.radio-card input:focus-visible {
+  outline: 2px solid rgba(91, 140, 255, 0.7);
+  outline-offset: 2px;
 }
 
 .button-row {
@@ -156,6 +258,8 @@ input {
   border: none;
   cursor: pointer;
   font-weight: 600;
+  font-size: 14px;
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
 }
 
 .primary-button:disabled,
@@ -164,9 +268,8 @@ input {
   cursor: not-allowed;
 }
 
-.primary-button {
-  background: #5b8cff;
-  color: #ffffff;
+.primary-button:hover:not(:disabled) {
+  background: #6f9bff;
 }
 
 .secondary-button {
@@ -174,14 +277,26 @@ input {
   color: #e5eefc;
 }
 
+.secondary-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
+  /* 状态名可能很长（WAITING_FOR_CONFIRMATION），不许撑破标题行 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge.waiting {
@@ -201,7 +316,8 @@ input {
 
 .badge.paused,
 .badge.queued,
-.badge.planning {
+.badge.planning,
+.badge.draft {
   background: rgba(255, 255, 255, 0.12);
   color: #d1def7;
 }
@@ -215,7 +331,7 @@ input {
 .timeline {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -225,6 +341,19 @@ input {
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.timeline li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* 时间线正文区允许收缩 + 断行，长事件消息不会横向撑开 */
+.timeline li > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .timeline-dot {
@@ -233,6 +362,7 @@ input {
   margin-top: 6px;
   border-radius: 999px;
   background: #7283a7;
+  flex-shrink: 0;
 }
 
 .timeline-dot.done {
@@ -255,8 +385,14 @@ input {
   margin-bottom: 12px;
 }
 
+.section-header h2 {
+  /* 标题与右侧 badge 空间竞争时允许标题收缩 */
+  min-width: 0;
+}
+
 .detail-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
   margin-top: 16px;
 }
@@ -276,10 +412,15 @@ input {
 }
 
 .task-card {
-  padding: 16px;
+  padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   background: rgba(9, 15, 30, 0.55);
+  transition: border-color 0.15s ease;
+}
+
+.task-card:hover {
+  border-color: rgba(91, 140, 255, 0.35);
 }
 
 .task-card-header {
@@ -290,28 +431,93 @@ input {
   margin-bottom: 8px;
 }
 
+.task-card-header strong {
+  /* 标题优先占空间，但遇到超长无空格标题也能断行 */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 编号 / UUID 等机器标识：等宽字体 + 任意位置断行 */
+.mono-text {
+  font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+  font-size: 13px;
+  color: #9fb2d5;
+  word-break: break-all;
+}
+
 .muted-text {
   color: #9fb2d5;
 }
 
 .error-message {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 120, 120, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 120, 120, 0.1);
   color: #ff9494;
+  word-break: break-word;
 }
 
 .inline-link {
   color: #7aa6ff;
   text-decoration: underline;
   text-underline-offset: 3px;
+  /* 引用来源的 URL 往往是一整串无空格字符，允许任意断行防撑破 */
+  word-break: break-all;
+  transition: color 0.15s ease;
+}
+
+.inline-link:hover {
+  color: #a3c0ff;
 }
 
 .markdown-preview {
   white-space: pre-wrap;
+  /* 双保险：先尽量断行；真有极端长行时在内部滚动，绝不撑破面板 */
+  word-break: break-word;
+  overflow-x: auto;
   margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(6, 10, 24, 0.65);
   font-family: "SFMono-Regular", Consolas, monospace;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.75;
   color: #dbe7ff;
 }
 
 .link-button {
   text-decoration: none;
+}
+
+/* 窄屏响应：侧栏折叠为顶部横条，内容区收紧 */
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    padding: 16px 20px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .brand {
+    margin-bottom: 12px;
+  }
+
+  .nav {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .nav-hint {
+    display: none;
+  }
+
+  .content {
+    padding: 20px;
+  }
 }

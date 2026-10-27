@@ -52,7 +52,7 @@ export default function ReportPage({ params }: ReportPageProps) {
     <section className="page">
       <header className="page-header">
         <h1>研究报告</h1>
-        <p>任务 ID：{params.taskId}</p>
+        <p className="mono-text">任务 ID：{params.taskId}</p>
       </header>
 
       <div className="button-row">

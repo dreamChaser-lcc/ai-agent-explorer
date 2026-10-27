@@ -109,7 +109,7 @@ export default function TaskDetailPage({ params }: TaskDetailPageProps) {
     <section className="page">
       <header className="page-header">
         <h1>任务详情</h1>
-        <p>任务 ID：{params.taskId}</p>
+        <p className="mono-text">任务 ID：{params.taskId}</p>
       </header>
 
       {errorMessage ? <p className="error-message">{errorMessage}</p> : null}

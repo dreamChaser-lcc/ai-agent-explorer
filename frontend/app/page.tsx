@@ -163,7 +163,7 @@ export default function HomePage() {
                   <strong>{task.title}</strong>
                   <span className={`badge ${task.status.toLowerCase()}`}>{task.status}</span>
                 </div>
-                <p>{task.taskNo}</p>
+                <p className="mono-text">{task.taskNo}</p>
                 <p>
                   模式：{task.executionMode} · 阶段：{task.currentStage}
                 </p>
