@@ -565,7 +565,7 @@ Service/Controller 不把"某次请求的数据"存在字段里，数据全部�
 #### 三、prototype 的两个大坑
 
 1. **注入即定格**：singleton A 注入 prototype B → B 只注入一次，之后 A 用的
-   永远是同一个 B（想要"每次新的"得用 ObjectProvider<B> 或 @Lookup）。
+   永远是同一个 B（想要"每次新的"得用 `ObjectProvider<B>` 或 `@Lookup`）。
 2. **容器不管销毁**：prototype 的 @PreDestroy 不会被 Spring 调用。
 
 #### 四、决策
@@ -581,3 +581,4 @@ Service/Controller 不把"某次请求的数据"存在字段里，数据全部�
 ```text
 Spring bean 默认全是单例 → 所以"bean 必须无状态"是铁律
 （本项目 0 处 @Scope 正是这个纪律的体现）
+```
