@@ -229,3 +229,148 @@ Map<Boolean, Long> counted = tasks.stream()
 3. **口诀**："返回 Stream = 中间；返回别的 = 终结"——流的尽头必须是个答案；
 4. **短路**："答案需要多少数据，决定能不能短路"（allMatch 只查 1 个 vs count 全跑）；
 5. **peek 位置即视野**；**collect 家族**=分组/拼串/计数（`toList` 是它的简化版）。
+
+---
+
+## 进阶一：实操记录——项目真实用例（2026-10-27 补，全 60 处用法中的代表作）
+
+### 用例 1：SQL IN 占位符生成（RetentionCleanupDao）
+
+```java
+// 需求：拼出与状态数量一致的 "?,?,?..."——防 SQL 注入的标准姿势（不能直接拼值）
+String placeholders = statuses.stream()
+        .map(s -> "?")
+        .collect(Collectors.joining(","));
+// statuses = [COMPLETED, FAILED]  →  "?,?"
+```
+
+```text
+解读：map（每个元素换成 "?"）→ joining（逗号连接）
+配套：DELETE ... WHERE status IN (?,?)
+```
+
+### 用例 2：批量日志拼接（RetentionCleanupDao / TokenAuthFilter）
+
+```java
+String in = batch.stream()
+        .map(id -> "?")
+        .collect(Collectors.joining(",", "(", ")"));
+// → "(?,?,?)"   带前后缀的 joining
+
+ TokenAuthFilter 里：.collect(Collectors.joining("\n  "))   // 多行缩进日志
+```
+
+### 用例 3：实体 → DTO 映射（TaskResponseMapper 等全部 Mapper）
+
+```java
+List<TaskSummaryResponse> list = tasks.stream()
+        .map(this::toResponse)          // 方法引用：Entity → VO
+        .toList();
+```
+
+```text
+这是项目里最普遍的形态：查询结果 Entity 列表 → 响应 VO 列表
+（"对象变身"那一课的第五步，Stream 是它的执行工具）
+```
+
+---
+
+## 进阶二：Collector 家族（对照 SQL 学最快）
+
+| Collector | 作用 | SQL 对照 | 项目场景 |
+|---|---|---|---|
+| `toList()` | 收集为 List | `SELECT` 结果集 | Mapper 映射 |
+| `joining(",")` | 字符串拼接 | —（应用层活） | 占位符、日志 |
+| `groupingBy(f)` | 按键分组 `Map<K,List>` | `GROUP BY` | 按状态分组任务 |
+| `groupingBy(f, counting())` | 分组计数 `Map<K,Long>` | `GROUP BY + COUNT` | 状态统计 |
+| `toMap(k, v)` | 键值 Map | — | id → 实体索引 |
+| `partitioningBy(pred)` | 按布尔二分 | `WHERE` 二桶 | 成功/失败分桶 |
+| `counting() / summingInt()` | 计数/求和 | `COUNT/SUM` | 汇总 |
+
+```java
+// groupingBy 实战：按状态统计任务数（= SELECT status, COUNT(*) GROUP BY status）
+Map<TaskStatus, Long> count = tasks.stream()
+        .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
+
+// toMap 实战：建 id → title 索引
+Map<UUID, String> index = tasks.stream()
+        .collect(Collectors.toMap(Task::getId, Task::getTitle));
+```
+
+---
+
+## 进阶三：三个高频易错点（面试与踩坑通用）
+
+### ① `map` vs `flatMap`（一对多展开）
+
+```java
+// map：1 → 1（每个任务 → 它的步骤数）
+tasks.stream().map(t -> t.getSteps().size())
+
+// flatMap：1 → N（每个任务的步骤列表 → 摊平成一条流）
+tasks.stream().flatMap(t -> t.getSteps().stream())   // Stream<Step>，不是 Stream<List<Step>>
+```
+
+```text
+记忆：flatMap = map + flatten（先映射成流，再摊平）
+场景："所有任务的全部步骤"这种嵌套结构拉直
+```
+
+### ② `toMap` 的键冲突（直接炸）
+
+```java
+// 两个元素同键 → IllegalStateException: Duplicate key
+// 解决：给第三个参数（merge 函数）
+Collectors.toMap(Task::getTaskNo, t -> t,
+                 (a, b) -> a)        // 冲突时保留先出现的
+```
+
+### ③ `parallelStream` 的适用边界（能不用就不用）
+
+```text
+适合：CPU 密集 + 数据量万级以上 + 无序容忍
+不适合（都会更慢或出事）：
+  · IO 密集（DB/HTTP）→ 线程切换开销远大于收益，还会占满公共池
+  · 小数据量（<1000）→ 并行开销倒挂
+  · 共享可变状态 → 竞态（Stream 依然要遵守 J8 的"共享+可变"铁律）
+默认公共 ForkJoinPool——一个阻塞，全应用的其他 parallelStream 跟着饿
+```
+
+---
+
+## 面试级问答（2026-10-27）
+
+**Q1：Stream 的惰性求值是什么？**
+
+```text
+中间操作（map/filter/flatMap/sorted/peek）只是【登记】要做什么，不执行
+终端操作（collect/forEach/count/reduce/anyMatch）才触发整条流水线一次性跑完
+好处：多步操作可被"融合"成单遍循环（fused）——不是每次 filter 都遍历一遍
+```
+
+**Q2：中间操作 vs 终端操作怎么分？**
+
+```text
+看返回值：
+  返回 Stream 的 = 中间（还能继续 .xxx）
+  返回结果/void 的 = 终端（collect/toList/count/forEach/reduce）
+另外：一个 Stream 实例只能被终端消费【一次】——再来一次抛 IllegalStateException
+     （要用第二次：重新 stream() 从源开始）
+```
+
+**Q3：Stream 比 for 循环慢吗？**
+
+```text
+小数据量：略慢（lambda + 对象包装开销）
+大数据量：JIT 优化后基本持平
+业务代码：可读性收益 > 微小的性能差异 → 优先 Stream
+热点路径（Profile 证明是瓶颈）：再换 for / 手工优化
+```
+
+### 一句话
+
+```text
+Stream = 声明式的"数据流水线"：中间操作登记、终端操作触发、只消费一次
+项目三大真实用法：占位符 joining / Mapper 映射 toList / 分组 groupingBy
+三个坑：flatMap 才能摊平、toMap 冲突要 merge、parallelStream 慎用（IO 场景反伤）
+```

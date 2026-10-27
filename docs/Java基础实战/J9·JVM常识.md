@@ -239,3 +239,199 @@ java  JvmLab
 ---
 
 *（本课为 J 系列最后一课。下一阶段：业务场景实战——"遇卡即停，随时增补 J10+"。）*
+
+---
+
+## 10. 进阶：面试题——线上 OOM 怎么排查？（2026-10-27 补）
+
+> 学员要求补充面试进阶：OOM 排查与 JVM 调优。J9 正文讲过内存版图（§2）、GC（§3）、
+> 参数破译（§4），这节补"出了事怎么查"的实战方法论。
+
+### 10.1 一句话总纲（面试开口先说这句）
+
+```text
+先保现场（HeapDump 自动落盘）→ 再找大户（MAT 支配树）→ 后定位代码（GC Roots 引用链）
+```
+
+### 10.2 第一步分诊：OOM 的五种类型（报错不同，病不同）
+
+| 报错信息 | 哪满了 | 常见根因 |
+|---|---|---|
+| `Java heap space` | 堆 | 大集合/一次性大查询/缓存无淘汰 |
+| `GC overhead limit exceeded` | 堆（GC 失效） | 内存泄漏——GC 花 98% 时间却收不回 2% 空间 |
+| `Metaspace` | 元空间 | 动态类爆炸（CGLIB 代理、反射、脚本引擎、热部署） |
+| `unable to create new native thread` | 线程数 | `new Thread` 无上限 / 线程池泄漏 |
+| `Direct buffer memory` | 堆外 | NIO DirectBuffer 分配后未释放 |
+
+> 本课 §2 的版图直接对应：堆满、档案室满、宿舍走廊（线程）满——先看报错定位"哪栋楼着火"。
+
+### 10.3 排查七步（标准流程）
+
+```text
+① 埋雷（启动参数，事前做）：
+   -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/logs/heap.hprof
+   → OOM 发生瞬间自动保存堆快照（第一现场，最宝贵）
+
+② 拿到 dump（没埋雷时的补救）：
+   jmap -dump:live,format=b,file=heap.hprof <pid>
+   （注意：dump 会 STW，生产低峰期做）
+
+③ 快速三板斧（不 dump 先看概况）：
+   jstat -gcutil <pid> 1000    → 每 1s 看：新生代/老年代占用、GC 次数与耗时
+   jmap -histo <pid> | head -20 → 对象直方图：哪个类的对象最多、最占内存
+
+④ MAT（Eclipse Memory Analyzer）打开 hprof
+⑤ Leak Suspects 报告（MAT 一键泄漏分析）
+⑥ Dominator Tree（支配树）→ 找最大内存持有者
+   → 右键 Path to GC Roots（排除弱引用）→ 谁一直引用它 = 泄漏点
+⑦ 定位到代码行 → 修复 → 压测复验
+```
+
+### 10.4 命令行工具速查（面试加分）
+
+| 命令 | 作用 | 使用时机 |
+|---|---|---|
+| `jps` | 找 Java 进程号 | 一切开始 |
+| `jstat -gcutil <pid> 1000` | GC 概况（占比/次数/耗时） | 判断"GC 是否在正常工作" |
+| `jmap -histo <pid>` | 对象直方图（按大小排序） | 快速看"谁的对象最多" |
+| `jmap -dump` | 堆快照 | 深度分析前 |
+| `jstack <pid>` | 线程栈快照 | 配合"线程 OOM"和 CPU 100% |
+| `arthas dashboard/heapdump` | 阿里在线诊断工具 | 生产环境最常用（Attach 不重启） |
+
+### 10.5 四大经典根因（案例库，面试直接讲）
+
+```text
+① 缓存只加不删：HashMap 当缓存，无淘汰无上限 → 最终 heap space
+   （正确姿势：Caffeine 设 maximumSize / TTL——见支线 T6）
+② 大查询不分页：SELECT 百万行一次性进 List → 瞬间 heap space
+   （正确姿势：分页 / 流式读取 / 限定 LIMIT）
+③ ThreadLocal 未 remove：线程池的线程长命百岁，每次请求塞一个 → 缓慢累积
+   （正确姿势：finally 里 remove，或用 try-with-resources 包装）
+④ 动态类爆炸：每次请求都 new 一个 CGLIB 代理类 → Metaspace 满
+   （正确姿势：代理类复用缓存——Spring 的代理是启动期一次性生成的）
+```
+
+### 10.6 项目关联
+
+```text
+· 本项目生产 JVM（Dockerfile）：-XX:MaxRAMPercentage=75.0（§4 已破译）
+  → 按容器内存限额自动算堆——这是"容器化部署"的正确姿势
+· 生产建议（当前未配，可作为改进项）：
+  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp
+  → 保留 OOM 第一现场，是排查的起点
+· 开发环境的 JAVA_TOOL_OPTIONS 里目前只有代理参数（J9 §4 破译过）
+```
+
+### 10.7 一句话
+
+```text
+OOM 排查 = 先分诊（五种类型定位病区）→ 保现场（dump）→
+           找大户（支配树）→ 定代码（GC Roots 引用链）
+事前埋雷（HeapDumpOnOutOfMemoryError）比事后补救（jmap）有价值十倍
+```
+
+---
+
+## 11. 进阶：面试题——JVM 调优怎么调？（2026-10-27 补）
+
+### 11.1 诚实的开场（面试第一句这么说，加分）
+
+```text
+"大多数场景默认参数就够——调优是【有目标、有数据】之后的动作，不是开局就调。"
+
+面试官问"你调过优吗"，最忌讳一上来背参数清单。
+先讲方法论（目标→观测→瓶颈→单参数迭代），再带一两个实战参数。
+```
+
+### 11.2 调优三角（目标先行，三者不可兼得）
+
+```text
+      吞吐量（单位时间处理量）
+        /\
+       /  \
+      /    \
+  延迟 ←————→ 内存占用
+```
+
+| 业务场景 | 目标 | 适合的 GC 器 |
+|---|---|---|
+| 批处理 / 离线计算 | 吞吐量 | Parallel（JDK8 默认） |
+| **在线服务（本项目）** | 延迟（P99） | **G1（JDK9+ 默认）** |
+| 超大堆 + 极低延迟 | 亚毫秒停顿 | ZGC / Shenandoah（JDK15+/17+） |
+
+### 11.3 GC 器演进（JDK8 → 21，面试高频）
+
+```text
+JDK 8：默认 Parallel Scavenge（吞吐优先，STW 长但稀）
+JDK 9：默认 G1（Region 化、可预测停顿）★ 本项目 Java 21 用的就是它
+JDK 14：CMS 被移除（老面试题"CMS 三色标记"已成历史）
+JDK 15/17/21：ZGC / Shenandoah 生产可用（停顿 <1ms，吞吐略降）
+```
+
+**G1 一句话**（面试答法）：
+
+```text
+把堆切成约 2048 个等大 Region，优先回收"垃圾最多"的（Garbage First），
+用 -XX:MaxGCPauseMillis=200 设停顿目标，G1 自己决定每次收哪些 Region。
+```
+
+### 11.4 调优参数表（实用就这几个）
+
+| 参数 | 作用 | 实践要点 |
+|---|---|---|
+| `-Xms` = `-Xmx` | 初始堆 = 最大堆 | 避免运行期扩容抖动；容器里用 `MaxRAMPercentage` 替代 |
+| `-XX:MaxRAMPercentage=75.0` | 按容器限额百分比算堆 | **本项目 Dockerfile 在用**（75% 留 25% 给元空间/栈/堆外） |
+| `-XX:MaxGCPauseMillis=200` | G1 停顿目标 | 默认 200ms；要求更低会牺牲吞吐 |
+| `-XX:MetaspaceSize` / `-XX:MaxMetaspaceSize` | 元空间初始/上限 | 排查"动态类泄漏"时收紧观察 |
+| `-Xlog:gc*:file=gc.log:time,uptime:filecount=5,filesize=10m` | GC 日志（JDK9+） | **调优必须先开日志——没数据调什么** |
+| `-XX:+HeapDumpOnOutOfMemoryError` | OOM 自动 dump | 排查的保险丝（§10） |
+
+### 11.5 调优流程四步（面试答题骨架）
+
+```text
+① 定目标（量化）："P99 接口延迟 < 200ms，Full GC < 1 次/天"
+② 开观测：GC 日志 + Prometheus/Grafana（Micrometer 暴露 JVM 指标）
+③ 找瓶颈（对照症状表）：
+   · Minor GC 太频繁       → 新生代太小（Eden 装不下短期对象）
+   · 对象过早晋升老年代     → Survivor 太小 / 大对象直配
+   · Full GC 频繁          → 先查泄漏/大对象（§10），再谈调参
+④ 单参数迭代：一次只改一个 → 观察 24h → 无效回滚
+   （一次改一堆 = 无法归因，等于没调）
+```
+
+### 11.6 高频追问三连（附标准答案）
+
+**Q1：线上 CPU 100% 怎么排查？**
+
+```bash
+top -Hp <pid>              # 1. 找最耗 CPU 的【线程】TID
+printf '%x\n' <tid>        # 2. TID 转十六进制（jstack 里 nid 是 16 进制）
+jstack <pid> | grep -A 20 'nid=0x<hex>'   # 3. 定位线程栈 → 看它正在跑什么代码
+```
+
+**Q2：内存泄漏 vs 内存溢出？**
+
+```text
+泄漏（leak）＝ 慢性病：该回收的对象被引用着，GC 回收不掉 → 堆缓慢上涨 → 最终溢出
+溢出（overflow）＝ 急性症状：一次装太多（大查询/大文件）直接爆
+泄漏的终点是溢出；溢出不一定有泄漏
+```
+
+**Q3：怎么避免 Full GC？**
+
+```text
+先分诊：是什么触发的 Full GC？
+· 老年代满了   → 查泄漏（§10）/ 大对象直配
+· 元空间满了   → 动态类泄漏
+· System.gc() → 代码里有人手贱调用（加 -XX:+DisableExplicitGC 屏蔽）
+· 晋升太快     → Survivor 太小 / MaxTenuringThreshold 太低
+低频 Full GC（天级）可接受；调优目标是"可控"，不是"归零"
+```
+
+### 11.7 一句话
+
+```text
+JVM 调优 = 目标先行（三角选二）→ 数据说话（GC 日志）→ 单参数迭代（一次一个）
+默认参数覆盖 80% 场景；调优是"有症状、有数据、有目标"之后的精修
+开口先讲方法论再讲参数，面试官立刻知道你是真做过
+```
