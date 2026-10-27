@@ -136,3 +136,32 @@ ZonedDateTime  = 完整时区规则（夏令时场景才需要）
 ## 八、课堂问答记录（2026-10-27）
 
 （待补——学员提问后按双台账纪律记录）
+
+---
+
+## 九、项目关联与面试问法（2026-10-27 补）
+
+**项目 73 处 `OffsetDateTime` 的分布**：
+
+```text
+· 12 个 Entity 的时间字段（created_at / updated_at / completed_at ...）
+  → 数据库 timestamptz 列，存"时刻 + 偏移"
+· 各 Response 的时间字段（TaskSummaryResponse.createdAt 等）
+  → JSON 输出 ISO 字符串："2026-10-27T14:29:18.685+08:00"
+· 全链路统一：存储 → 传输 → 前端 new Date(...) 无歧义解析
+```
+
+**面试三连**：
+
+```text
+Q1：为什么项目全用 OffsetDateTime 而不用 LocalDateTime？
+    → 无歧义灾难："10:00" 不知道是北京还是伦敦；"+08:00" 全世界换算一致
+
+Q2：Instant 和 OffsetDateTime 怎么选？
+    → Instant = 机器的绝对时刻（存储/计算/比较）
+    → OffsetDateTime = 时刻 + 人可读的偏移（API 传输首选）
+
+Q3：前端拿到 "2026-10-27T10:00+08:00" 怎么处理才不会差 8 小时？
+    → new Date("...+08:00") 按偏移解析（安全）
+    → new Date("...T10:00")（无偏移）按浏览器本地解析——差 8 小时的经典事故
+```

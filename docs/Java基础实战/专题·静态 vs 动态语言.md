@@ -194,3 +194,27 @@ researchTaskExecutor.execute(() -> executeTask(taskId));
 | J6 | switch 穷尽检查（编译期） |
 | J7 | 注解寿命（@Retention 三档）、反射五件套、框架操作全谱 |
 | J8 | 方法不是值、lambda / `::`、函数式接口 |
+
+---
+
+## 项目关联（2026-10-27 补）
+
+```text
+本项目的"静态 vs 动态"两侧对照（同一套前后端协作）：
+
+后端（Java，静态）：
+  · 编译期就锁死类型——CreateResearchTaskRequest 的字段、类型、校验
+    （@NotBlank）在编译/启动期全部就位
+  · 泛型（J3）：PageResponse<TaskSummaryResponse> 编译期就能查出装箱错误
+  · record（J1 补充）：不可变数据载体，自动生成 equals/hashCode
+
+前端（JS，动态）：
+  · 运行时才知道类型——字段写错只有跑起来才炸
+  · TypeScript 的出现 = 动态语言向静态"求救"（大型项目的必然演化）
+  · TS 的 interface ≈ Java 的接口（J2）——同一母题的两种方言
+
+一个杂交实例（项目里真实存在）：
+  ApiError.fields 是 List<FieldViolation>——编译期类型确定（静态侧）
+  但"哪些字段违规"只能运行时填（动态信息装进静态容器）
+  → 静态语言处理动态数据的标准姿势：容器静态 + 内容动态
+```
