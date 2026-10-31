@@ -4,9 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -23,13 +22,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *   ② 白名单：/actuator、/h2-console 放行（否则探针/控制台会被拦）；
  *   ③ @Order(1)：比 BodyCachingFilter(2) 更靠外——先进入、后离开。
  */
+@Slf4j
 @Component
 @Order(1)
 @ConditionalOnProperty(name = "app.demo.token-auth-enabled", havingValue = "true")
 public class TokenAuthFilter extends OncePerRequestFilter {
-
-    private static final Logger log = LoggerFactory.getLogger(TokenAuthFilter.class);
-
     /** 演示用固定 token（真实项目应校验 JWT / 会话）。 */
     private static final String VALID_TOKEN = "demo-token";
 

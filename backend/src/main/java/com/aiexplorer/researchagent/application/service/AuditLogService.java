@@ -3,9 +3,8 @@ package com.aiexplorer.researchagent.application.service;
 import com.aiexplorer.researchagent.infrastructure.persistence.entity.AuditLogEntity;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.AuditLogRepository;
 import com.aiexplorer.researchagent.shared.enums.AuditResult;
+import lombok.extern.slf4j.Slf4j;
 import java.time.OffsetDateTime;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 业务事务回滚时（方法抛异常），审计记录【不会被一起卷走】。
  * 这正是"失败也要留痕"能成立的底层保障：业务回滚 → 失败记录照旧落库。</p>
  */
+@Slf4j
 @Service
 public class AuditLogService {
-
-    private static final Logger log = LoggerFactory.getLogger(AuditLogService.class);
-
     /** MVP 简化：操作者先固定；正式方案 = 从用户/安全上下文（如 ThreadLocal）取。 */
     private static final String CURRENT_ACTOR = "demo-user";
 
