@@ -65,3 +65,4 @@ temp/
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.vitepress/cache/
+docs-site/.vitepress/.temp/

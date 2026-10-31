@@ -191,9 +191,9 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev" -Dmaven.test.skip=true
 
 | UI | 地址 | 特点 | 依赖 |
 |---|---|---|---|
-| **Swagger UI 5.20.1** | http://localhost:8080/swagger-ui.html | 可 **Try it out** 调试；单栏滚动，字段区较松 | 内置（零依赖） |
-| **Scalar** | http://localhost:8080/scalar.html | 现代界面、右侧抽屉看模型、深浅色主题 | ⚠️ CDN（可能被网络拦截） |
-| **ReDoc 2.1.5** | http://localhost:8080/redoc.html | **三栏文档式**（左导航/中接口/右模型常驻），**只读** | ✅ **本地 `redoc.js`（0.87 MB，已离线化）** |
+| **Swagger UI 5.20.1** | `http://localhost:8080/swagger-ui.html` | 可 **Try it out** 调试；单栏滚动，字段区较松 | 内置（零依赖） |
+| **Scalar** | `http://localhost:8080/scalar.html` | 现代界面、右侧抽屉看模型、深浅色主题 | ⚠️ CDN（可能被网络拦截） |
+| **ReDoc 2.1.5** | `http://localhost:8080/redoc.html` | **三栏文档式**（左导航/中接口/右模型常驻），**只读** | ✅ **本地 `redoc.js`（0.87 MB，已离线化）** |
 
 **原始 spec（可导入 Apifox/Postman）**：
 
