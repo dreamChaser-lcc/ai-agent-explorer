@@ -7,6 +7,7 @@
 //    java AnnotationLab        ← J7：自定义注解三件套（声明 / 使用 / 反射读取）
 //    java ThreadPoolLab        ← J8：线程池（排队 / 复用 / 两种提交方式）
 //    java BasicsLab            ← J1–J4 精华（record / 多态 / 泛型擦除 / 异常）
+//    （红黑树已移至 TreeLab.java —— TreeLab/RedBlackLab/BTreeLab/BPlusTreeLab）
 //    java JvmLab               ← J9：JVM 体检报告 / -Xmx 对比 / OOM 现场
 // ══════════════════════════════════════════════════════════════
 import java.util.ArrayList;
@@ -318,6 +319,7 @@ class BasicsLab {
 // J9 下半场：JvmLab（体检报告 / -Xmx 对比 / OOM 现场）
 // 跑法：
 //   javac exampleJavaGrammar.java
+//    （红黑树已移至 TreeLab.java —— TreeLab/RedBlackLab/BTreeLab/BPlusTreeLab）
 //   java JvmLab                  ← 体检报告（默认堆上限）
 //   java -Xmx64m JvmLab          ← 同一程序：堆被限成 64MB（对比 maxMemory）
 //   java -Xmx64m JvmLab oom      ← ★ OOM 现场（务必带 -Xmx64m——小堆安全）
@@ -359,3 +361,6 @@ class JvmLab {
         }
     }
 }
+
+
+// 
