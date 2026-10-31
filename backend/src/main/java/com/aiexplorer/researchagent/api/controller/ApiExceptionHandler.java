@@ -1,11 +1,11 @@
 package com.aiexplorer.researchagent.api.controller;
 
 import com.aiexplorer.researchagent.api.response.ApiError;
+import com.aiexplorer.researchagent.shared.enums.ErrorCode;
 import com.aiexplorer.researchagent.shared.exception.TaskNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -30,15 +30,13 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * 分派规则：异常与多个 handler 匹配时，取【最具体】的那个
  * （例：TaskNotFoundException 会命中第 1 个，而不是最后的 Exception 兜底）。
  */
+@Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
-
     @ExceptionHandler(TaskNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ApiError handleTaskNotFound(TaskNotFoundException exception, HttpServletRequest request) {
-        return ApiError.of("TASK_NOT_FOUND", exception.getMessage(), request.getRequestURI());
+        return ApiError.of(ErrorCode.TASK_NOT_FOUND, exception.getMessage(), request.getRequestURI());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -122,7 +120,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DataAccessException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiError handleDataAccessException(DataAccessException exception, HttpServletRequest request) {
-        return ApiError.of("DATA_ACCESS_ERROR",
+        return ApiError.of(ErrorCode.DATA_ACCESS_ERROR,
                 "数据访问失败：" + exception.getMostSpecificCause().getMessage(),
                 request.getRequestURI());
     }
@@ -134,7 +132,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(OptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiError handleOptimisticLock(OptimisticLockingFailureException exception, HttpServletRequest request) {
-        return ApiError.of("CONCURRENT_CONFLICT", "数据已被其他操作修改，请刷新后重试", request.getRequestURI());
+        return ApiError.of(ErrorCode.CONCURRENT_CONFLICT, "数据已被其他操作修改，请刷新后重试", request.getRequestURI());
     }
 
     /**
@@ -144,7 +142,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiError handleDataIntegrityViolation(DataIntegrityViolationException exception, HttpServletRequest request) {
-        return ApiError.of("CONCURRENT_CONFLICT", "数据冲突（可能为并发重复提交），请重试", request.getRequestURI());
+        return ApiError.of(ErrorCode.CONCURRENT_CONFLICT, "数据冲突（可能为并发重复提交），请重试", request.getRequestURI());
     }
 
     /** ★ 新增：兜底——未预料异常统一 500；日志留痕、响应不泄露内部细节。 */
@@ -152,6 +150,6 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiError handleUnexpected(Exception exception, HttpServletRequest request) {
         log.error("未处理异常: {} {}", request.getMethod(), request.getRequestURI(), exception);
-        return ApiError.of("INTERNAL_ERROR", "服务器内部错误", request.getRequestURI());
+        return ApiError.of(ErrorCode.INTERNAL_ERROR, request.getRequestURI());
     }
 }

@@ -1,5 +1,6 @@
 package com.aiexplorer.researchagent.api.response;
 
+import com.aiexplorer.researchagent.shared.enums.ErrorCode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -50,5 +51,22 @@ public record ApiError(
     /** 便捷构造：带字段明细（参数校验失败场景）。 */
     public static ApiError of(String code, String message, String path, List<FieldViolation> fields) {
         return new ApiError(code, message, path, OffsetDateTime.now(), fields, false);
+    }
+
+    /* ---------- T4 规范：错误码枚举入口（2026-10-31） ---------- */
+
+    /**
+     * 错误码枚举版：code 与默认消息取自 {@link ErrorCode}。
+     *
+     * <p>相比 String 版的好处：编译期有类型保障（写错枚举常量直接编译失败）、
+     * 错误码清单集中可查、HTTP 状态与语义在枚举里成对定义。</p>
+     */
+    public static ApiError of(ErrorCode errorCode, String path) {
+        return new ApiError(errorCode.code(), errorCode.message(), path, OffsetDateTime.now(), List.of(), false);
+    }
+
+    /** 错误码枚举版 + 上下文覆盖消息（在默认消息基础上补充具体原因，如"任务 xxx 不存在"）。 */
+    public static ApiError of(ErrorCode errorCode, String message, String path) {
+        return new ApiError(errorCode.code(), message, path, OffsetDateTime.now(), List.of(), false);
     }
 }
