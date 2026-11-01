@@ -160,6 +160,13 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>2.8.6</version>
         </dependency>
+        <!-- T7 (2026-11-01)：Redisson 分布式锁（看门狗续期/可重入/读写锁）——Boot 不管版本，需显式指定 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+            <version>3.30.0</version>
+        </dependency>
+
         <!-- T6 (2026-11-01)：Caffeine 本地缓存（版本由 Spring Boot BOM 管理） -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
