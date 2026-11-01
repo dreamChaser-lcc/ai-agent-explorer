@@ -7,6 +7,16 @@
 
 ---
 
+## 涉及代码文件（点击阅读）
+
+| 文件 | 本课中的作用 |
+|---|---|
+| [`ErrorCode.java`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/enums/ErrorCode.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/enums/ErrorCode.java) | ★ 本课产出：11 码三要素枚举 |
+| [`ApiError.java`](../../backend/src/main/java/com/aiexplorer/researchagent/api/response/ApiError.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/api/response/ApiError.java) | 新增 of(ErrorCode) 枚举入口（新旧并存） |
+| [`ApiExceptionHandler.java`](../../backend/src/main/java/com/aiexplorer/researchagent/api/controller/ApiExceptionHandler.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/api/controller/ApiExceptionHandler.java) | 5 处字符串码 → 枚举改造处 |
+
+---
+
 ## 一、改造前：散落的字符串（实测 11 处）
 
 ```java
@@ -82,7 +92,49 @@ public static ApiError of(ErrorCode errorCode, String message, String path)    /
         迭代既有 handler 时顺手把字符串换成枚举
 ```
 
-## 六、进一步演进（企业级方向，暂不做）
+## 六、追问：`values()` 是从哪里来的？（2026-10-31 学员问）
+
+**答案：javac 编译器自动生成的——源码里根本没写。**
+
+javap 反编译 `ErrorCode.class` 的真实输出：
+
+```text
+private static final ErrorCode[] ENUM$VALUES;   ← 编译器存的常量表数组
+static {};                                        ← 编译器生成的初始化块
+public static ErrorCode[] values();               ← ★ 编译器生成
+public static ErrorCode valueOf(String);          ← 编译器生成
+public static ErrorCode fromCode(String);         ← 本类手写的（唯一）
+```
+
+**规则出处：JLS §8.9**——每个 enum 隐式拥有两个静态方法，禁止手写：
+
+```text
+values()      按声明顺序返回全部常量（每次返回【新克隆数组】）
+valueOf(name) 按【常量名】查（大小写敏感；不匹配抛 IllegalArgumentException）
+```
+
+**和 T1/T2 的机制区别**：
+
+```text
+Lombok / MapStruct = 注解处理器（第三方，Annotation Processor API）
+enum values()      = 语言级内建——javac 对 enum 特判生成，不依赖任何处理器
+```
+
+**两个实用坑**：
+
+```java
+// ① values() 每次返回新克隆数组——循环里反复调是浪费
+ErrorCode[] all = ErrorCode.values();          // 先存变量再遍历
+
+// ② valueOf 查的是【常量名】不是 code 字段
+ErrorCode.valueOf("TASK_NOT_FOUND")   // ✓
+ErrorCode.valueOf("task_not_found")   // ✗ 抛异常
+// → 这就是 fromCode（按 code 字段反查）存在的原因
+```
+
+**扩展**：码表极大（几百个）时，fromCode 的线性遍历可换成静态 `Map<String,ErrorCode>` 缓存（类加载时建 map）。
+
+## 七、进一步演进（企业级方向，暂不做）
 
 ```text
 ① 错误码分段（模块前缀）：
@@ -92,7 +144,7 @@ public static ApiError of(ErrorCode errorCode, String message, String path)    /
 ④ 与 OpenAPI 联动：@ApiResponse 里引用错误码枚举（文档即码表）
 ```
 
-## 七、面试速答
+## 八、面试速答
 
 ```text
 Q：错误码用枚举还是常量类？

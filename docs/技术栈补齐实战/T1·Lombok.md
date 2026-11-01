@@ -7,6 +7,17 @@
 
 ---
 
+## 涉及代码文件（点击阅读）
+
+| 文件 | 本课中的作用 |
+|---|---|
+| [`pom.xml`](../../backend/pom.xml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/pom.xml) | lombok 依赖 + annotationProcessorPaths 登记处 |
+| [`AuditLogService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java) | 应用层示范：手写 Logger → @Slf4j |
+| [`ApiExceptionHandler.java`](../../backend/src/main/java/com/aiexplorer/researchagent/api/controller/ApiExceptionHandler.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/api/controller/ApiExceptionHandler.java) | api 层示范（类前多注解的插入位置） |
+| [`TokenAuthFilter.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/web/TokenAuthFilter.java) | infrastructure 层示范（踩坑案例） |
+
+---
+
 ## 一、为什么开这课（规范差距）
 
 ```text
