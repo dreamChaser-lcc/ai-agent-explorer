@@ -9,6 +9,7 @@ import com.aiexplorer.researchagent.infrastructure.persistence.repository.Resear
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.ResearchTaskRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.SourceDocumentRepository;
 import com.aiexplorer.researchagent.infrastructure.persistence.repository.StepExecutionRepository;
+import com.aiexplorer.researchagent.shared.constant.RedisConstant;
 import com.aiexplorer.researchagent.shared.enums.ReportStatus;
 import com.aiexplorer.researchagent.shared.enums.StepType;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -70,7 +71,7 @@ public class ResearchReportAssemblyService {
     /**
      * 根据任务执行结果和来源资料生成最终研究报告。
      */
-    @CacheEvict(value = "report", key = "#taskId") // ★ 场景⑦：写路径失效——报告重建后踢掉旧缓存（下次读自动重建）
+    @CacheEvict(value = RedisConstant.CACHE_REPORT, key = "#taskId") // ★ 场景⑦：写路径失效——报告重建后踢掉旧缓存（下次读自动重建）
     @Transactional
     public ResearchReportEntity buildReport(UUID taskId) {
         List<SourceDocumentEntity> sources = sourceDocumentRepository.findByTaskIdOrderByCreatedAtDesc(taskId);

@@ -1,5 +1,6 @@
 package com.aiexplorer.researchagent.infrastructure.lock;
 
+import com.aiexplorer.researchagent.shared.constant.RedisConstant;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -30,7 +31,7 @@ public class DistributedTaskLock {
 
     private static final Logger log = LoggerFactory.getLogger(DistributedTaskLock.class);
 
-    private static final String KEY_PREFIX = "lock:task:exec:";
+    /** 锁 key 前缀已迁移到 {@link RedisConstant#LOCK_TASK_EXEC_PREFIX}（T5 规范）。 */
 
     /** 锁 TTL：需覆盖一次完整执行（含多次 LLM 调用）。 */
     private static final Duration LOCK_TTL = Duration.ofMinutes(5);
@@ -52,12 +53,12 @@ public class DistributedTaskLock {
      * @return 持有凭证（token）；已被别人持有则返回 empty
      */
     public Optional<String> tryLock(UUID taskId) {
-        return acquire(KEY_PREFIX + taskId, "taskId=" + taskId);
+        return acquire(RedisConstant.lockTaskExec(taskId), "taskId=" + taskId);
     }
 
     /** 释放任务执行锁（token 不匹配则不删——防止误删他人锁）。 */
     public void unlock(UUID taskId, String token) {
-        release(KEY_PREFIX + taskId, token, "taskId=" + taskId);
+        release(RedisConstant.lockTaskExec(taskId), token, "taskId=" + taskId);
     }
 
     /**

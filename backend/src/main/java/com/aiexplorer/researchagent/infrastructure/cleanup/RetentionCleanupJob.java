@@ -2,6 +2,7 @@ package com.aiexplorer.researchagent.infrastructure.cleanup;
 
 import com.aiexplorer.researchagent.application.service.RetentionCleanupService;
 import com.aiexplorer.researchagent.infrastructure.lock.DistributedTaskLock;
+import com.aiexplorer.researchagent.shared.constant.RedisConstant;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,7 @@ public class RetentionCleanupJob {
             initialDelayString = "${app.cleanup.initial-delay-ms:60000}",
             fixedDelayString = "${app.cleanup.interval-ms:3600000}")
     public void scheduledCleanup() {
-        Optional<String> token = lock.tryLock("cleanup");
+        Optional<String> token = lock.tryLock(RedisConstant.LOCK_CLEANUP);
         if (token.isEmpty()) {
             log.info("[清理] 跳过：另一个实例正在清理");
             return;
