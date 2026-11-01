@@ -671,7 +671,7 @@ AVL：  严格平衡 → 查找略快，但插入/删除可能旋转 O(log n) �
 | 落点 | 用它干嘛 |
 |---|---|
 | `TreeMap` / `TreeSet` | 按 key 有序的 Map/Set（范围查询 firstKey/headMap） |
-| **`HashMap` 树化** | 桶内链表 ≥8 → 转红黑树（[J3 §18.3 的"8"就是它](../Java基础实战/J3·泛型与集合.md) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/docs/Java基础实战/J3·泛型与集合.md)） |
+| **`HashMap` 树化** | 桶内链表 ≥8 → 转红黑树（[J3 §18.3 的"8"就是它](../Java基础实战/J3·泛型与集合.md)） |
 | `ConcurrentSkipListMap` 对照 | 跳表版有序 Map（Redis zset 同款） |
 | Linux CFS 调度器 | 用红黑树管理进程的虚拟运行时间（公平调度） |
 

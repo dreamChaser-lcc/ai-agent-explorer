@@ -67,7 +67,7 @@
             \
              50
 
-★ 记住这个画面：[红黑树（06）](06·平衡树：AVL与红黑树.md) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/docs/数据结构实战/06·平衡树：AVL与红黑树.md) / [B 树（08）](08·B树与B+树.md) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/docs/数据结构实战/08·B树与B+树.md) / 跳表 都是为了治这个病而生的
+★ 记住这个画面：[红黑树（06）](06·平衡树：AVL与红黑树.md) / [B 树（08）](08·B树与B+树.md) / 跳表 都是为了治这个病而生的
 ```
 
 **退化什么时候发生**：插入顺序接近有序（自增主键、时间戳做 key——业务里太常见了）。
