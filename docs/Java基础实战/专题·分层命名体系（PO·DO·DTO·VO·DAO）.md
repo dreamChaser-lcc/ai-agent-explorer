@@ -245,7 +245,7 @@ Q3：为什么不让一个类走天下（Entity 直接收发）？
 ![对象流转泳道图](../assets/layered-objects-flow.svg)
 
 > ↑ 一图看全：五层泳道 + 写/读两条链路 + 每种对象的出生/死亡位置。下方表格补充生命周期，铁律对应 §六 的三个事故场景。
-> 完整 Web 链路（Filter/Interceptor/AOP/异常路径）见：[专题·从Servlet到SpringBoot 附录](../Java基础实战/专题·从Servlet到SpringBoot.md)
+> 完整 Web 链路（Filter/Interceptor/AOP/异常路径 + 手写练习）见：[SP11·请求管线手写实战](../Spring基础实战/SP11·请求管线手写实战（request-pipeline-lab）.md)
 
 ### 一、每个对象的"出生证与死亡证"
 
@@ -308,4 +308,44 @@ DDD 不是一种对象类型，是一种设计方法论：
   核心概念：实体/值对象/聚合/领域服务/仓储
   什么时候学：项目变复杂（业务规则多到 Service 塞不下）再深入——
   现在知道"DO ≈ Entity 的 DDD 叫法"即可，不过度设计。
+```
+### 追问：常规企业开发里还会有 BO 吗？（2026-11-07 学员问）
+
+**有，而且常见**——但不同团队叫法不同（阿里规范派叫 BO，DDD 派叫 DO/聚合，简化派直接省略）。
+
+**BO 的三个典型用途**：
+
+```text
+① 多源聚合（最常见）：订单详情 = 订单PO + 商品PO列表 + 用户PO + 物流PO → OrderDetailBO
+② 承载业务行为（充血模型）：OrderBO.calculateTotal() / CouponBO.isApplicable(order)
+③ 复杂流程的中间状态：本项目 ResearchReportAssemblyService.ReportDraft
+   （步骤结果 + 来源 + 摘要 → 报告草稿，非 Entity 非 VO，用完即弃）
+```
+
+**什么时候需要 BO（判断标准）**：
+
+| 场景 | 需要 BO？ | 做法 |
+|---|---|---|
+| 单表 CRUD（如 SP11 练习） | 不需要 | DTO → PO → VO 直通 |
+| 2 个 PO 简单拼接 | 可选 | Service 里 record 组合即可 |
+| 3+ 个 PO 拼业务视图 | 建议要 | XxxBO（带装配逻辑） |
+| 业务规则复杂（状态机/计算） | 必须 | BO 承载行为，Service 只编排 |
+| 多步骤流程中间产物 | 建议 | 如 ReportDraft |
+
+**企业命名流派（BO 的三种命运）**：
+
+```text
+① 阿里规范派：DO/DTO/VO/BO 齐全（大厂/中大型项目）
+② 简化三层派：Entity/DTO/VO，BO 省略（多数中小团队）
+③ DDD 派：DO + 聚合根 + 值对象（BO 概念被替代）
+本质相同：Service 里承载"多源组合 + 业务规则"的对象
+```
+
+**面试速答**：
+
+```text
+Q：有了 DO/Entity 为什么还要 BO？
+A：DO = 一张表的映射（数据）；BO = 多个 DO + 业务规则的组合（视图/行为）
+Q：BO 和 DTO 区别？
+A：BO 活在 Service 内部（不进不出接口）；DTO 是跨层信使
 ```
