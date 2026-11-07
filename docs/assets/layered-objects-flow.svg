@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="825" font-family="Microsoft YaHei,PingFang SC,sans-serif">
+<defs>
+<marker id="arr" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555"/></marker>
+<marker id="arrO" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#ef6c00"/></marker>
+</defs>
+<rect width="1180" height="825" fill="#fafbfd"/>
+<text x="590" y="28" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a1a2e">对象流转泳道图 —— 从请求到响应</text>
+
+<rect x="30" y="45" width="150" height="28" rx="4" fill="#37474f"/><text x="105" y="64" text-anchor="middle" fill="#fff" font-size="14">Client 前端</text>
+<rect x="255" y="45" width="150" height="28" rx="4" fill="#1976d2"/><text x="330" y="64" text-anchor="middle" fill="#fff" font-size="14">Controller</text>
+<rect x="490" y="45" width="150" height="28" rx="4" fill="#00897b"/><text x="565" y="64" text-anchor="middle" fill="#fff" font-size="14">Service</text>
+<rect x="720" y="45" width="150" height="28" rx="4" fill="#7b1fa2"/><text x="795" y="64" text-anchor="middle" fill="#fff" font-size="14">DAO/Repository</text>
+<rect x="955" y="45" width="150" height="28" rx="4" fill="#5d4037"/><text x="1030" y="64" text-anchor="middle" fill="#fff" font-size="14">DB</text>
+<line x1="210" y1="80" x2="210" y2="730" stroke="#dfe6ee"/><line x1="445" y1="80" x2="445" y2="730" stroke="#dfe6ee"/><line x1="675" y1="80" x2="675" y2="730" stroke="#dfe6ee"/><line x1="915" y1="80" x2="915" y2="730" stroke="#dfe6ee"/>
+
+<text x="30" y="108" font-size="15" font-weight="bold" fill="#c0392b">写入链路：POST /api/tasks</text>
+
+<rect x="25" y="122" width="165" height="40" rx="6" fill="#e3f2fd" stroke="#1976d2"/>
+<text x="107" y="139" text-anchor="middle" font-size="12" fill="#0d47a1">① 请求 JSON（DTO 出生）</text>
+<text x="107" y="155" text-anchor="middle" font-size="11" fill="#555">CreateTaskRequest</text>
+<line x1="190" y1="142" x2="250" y2="142" stroke="#555" marker-end="url(#arr)"/>
+
+<text x="340" y="148" font-size="12" fill="#333">② @Valid 校验 DTO</text>
+<line x1="330" y1="175" x2="330" y2="215" stroke="#555" marker-end="url(#arr)"/>
+<text x="338" y="200" font-size="11" fill="#777">③ 转 Service 入参</text>
+<line x1="430" y1="222" x2="480" y2="222" stroke="#555" marker-end="url(#arr)"/>
+
+<rect x="485" y="200" width="175" height="62" rx="6" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5"/>
+<text x="572" y="218" text-anchor="middle" font-size="12" fill="#e65100">④ new ResearchTaskEntity</text>
+<text x="572" y="233" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">★ PO 出生（JPA 叫 Entity）</text>
+<text x="572" y="252" text-anchor="middle" font-size="11" fill="#e65100">DDD 领域驱动的叫法：DO</text>
+<line x1="565" y1="264" x2="565" y2="292" stroke="#555" marker-end="url(#arr)"/>
+
+<text x="700" y="300" font-size="12" fill="#333">⑤ save(PO)</text>
+<line x1="660" y1="315" x2="950" y2="315" stroke="#555" marker-end="url(#arr)"/>
+<text x="1030" y="310" font-size="12" fill="#333">INSERT</text>
+<line x1="950" y1="345" x2="660" y2="345" stroke="#ef6c00" stroke-dasharray="6,3" marker-end="url(#arrO)"/>
+<text x="800" y="338" text-anchor="middle" font-size="12" fill="#e65100">← PO（带回自增 id）</text><text x="360" y="392" font-size="12" font-weight="bold" fill="#2e7d32">⑥ Mapper: PO → VO（★ VO 出生，PO 在此死亡——不出 Service）</text>
+<rect x="255" y="405" width="180" height="40" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+<text x="345" y="423" text-anchor="middle" font-size="12" fill="#1b5e20">TaskSummaryResponse</text>
+<text x="345" y="440" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">★ VO 出生</text>
+<line x1="435" y1="425" x2="435" y2="465" stroke="#555" marker-end="url(#arr)"/>
+<line x1="330" y1="475" x2="115" y2="475" stroke="#555" marker-end="url(#arr)"/>
+<text x="222" y="468" text-anchor="middle" font-size="11" fill="#777">⑦ JSON 序列化（VO 死于序列化完成）</text>
+<rect x="30" y="483" width="170" height="34" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+<text x="115" y="505" text-anchor="middle" font-size="12" fill="#1b5e20">前端收到 JSON（VO）</text>
+
+<text x="30" y="560" font-size="15" font-weight="bold" fill="#c0392b">读取链路：GET /api/tasks/{id}</text>
+
+<rect x="25" y="575" width="165" height="34" rx="6" fill="#e3f2fd" stroke="#1976d2"/>
+<text x="107" y="597" text-anchor="middle" font-size="12" fill="#0d47a1">GET /reports/123</text>
+<line x1="190" y1="592" x2="250" y2="592" stroke="#555" marker-end="url(#arr)"/>
+<text x="335" y="597" font-size="12" fill="#333">只传 id（Long）</text>
+<line x1="330" y1="615" x2="330" y2="640" stroke="#555" marker-end="url(#arr)"/>
+<line x1="430" y1="648" x2="480" y2="648" stroke="#555" marker-end="url(#arr)"/>
+<text x="452" y="640" font-size="11" fill="#777">findById</text>
+<line x1="660" y1="648" x2="950" y2="648" stroke="#555" marker-end="url(#arr)"/>
+<text x="805" y="640" text-anchor="middle" font-size="12" fill="#333">SELECT</text>
+<line x1="950" y1="672" x2="660" y2="672" stroke="#ef6c00" stroke-dasharray="6,3" marker-end="url(#arrO)"/>
+<text x="800" y="665" text-anchor="middle" font-size="12" fill="#e65100">← PO 数据行（PO 出生于 DAO）</text>
+<text x="360" y="698" font-size="12" font-weight="bold" fill="#2e7d32">Mapper: PO → VO（★ 敏感字段在此拦下：createdBy / idempotencyKey 不进 VO）</text>
+<line x1="330" y1="708" x2="115" y2="708" stroke="#555" marker-end="url(#arr)"/>
+<text x="222" y="700" text-anchor="middle" font-size="11" fill="#777">JSON（VO）</text>
+
+<rect x="480" y="725" width="14" height="14" fill="#e3f2fd" stroke="#1976d2"/><text x="500" y="737" font-size="12" fill="#333">DTO 边界信使</text>
+<rect x="630" y="725" width="14" height="14" fill="#fff3e0" stroke="#ef6c00"/><text x="650" y="737" font-size="12" fill="#333">PO 永不出 Service</text>
+<rect x="810" y="725" width="14" height="14" fill="#e8f5e9" stroke="#2e7d32"/><text x="830" y="737" font-size="12" fill="#333">VO 面向前端</text>
+<rect x="980" y="725" width="14" height="14" fill="#ede7f6" stroke="#7b1fa2"/><text x="1000" y="737" font-size="12" fill="#333">BO/DO</text>
+<text x="30" y="762" font-size="12" font-weight="bold" fill="#333">PO ≡ Entity —— 同一个东西的两种叫法：JPA 官方术语是 Entity（@Entity 注解标记），早期教程称 PO；本项目 ResearchTaskEntity 即 PO</text>
+<text x="30" y="784" font-size="12" fill="#555">BO（Business Object）= Service 内部的业务组装对象，项目真实例子：ResearchReportAssemblyService.ReportDraft（多源资料组装成报告草稿）</text>
+<text x="30" y="806" font-size="12" fill="#555">DDD（领域驱动设计）= 让代码结构贴合业务语言的开发方法论 → 领域层的业务对象称 DO；本项目的 Entity 实际承担 PO+DO 双重角色（简单业务可直接合一）</text>
+</svg>

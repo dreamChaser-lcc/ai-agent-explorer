@@ -239,3 +239,73 @@ Q3：为什么不让一个类走天下（Entity 直接收发）？
    Repository 11 + Dao 1 / Mapper 1）
 §五 一个请求的六步对象流转（DTO→PO→DAO→PO→VO→JSON）
 ```
+
+## 附录：对象流转泳道图——从请求进入到接口响应（2026-11-02 学员要求图解版）
+
+![对象流转泳道图](../assets/layered-objects-flow.svg)
+
+> ↑ 一图看全：五层泳道 + 写/读两条链路 + 每种对象的出生/死亡位置。下方表格补充生命周期，铁律对应 §六 的三个事故场景。
+> 完整 Web 链路（Filter/Interceptor/AOP/异常路径）见：[专题·从Servlet到SpringBoot 附录](../Java基础实战/专题·从Servlet到SpringBoot.md)
+
+### 一、每个对象的"出生证与死亡证"
+
+```text
+对象            出生                       死亡                     一生走过几层
+─────────────────────────────────────────────────────────────────────────────
+DTO(请求)   Controller 入参(JSON反序列化)   @Valid 校验完成           只活 1 层(Web)
+PO(Entity)  DAO 读写时                     Mapper 转换成 VO 后       永不出 Service
+VO(Response)Mapper 转换时                 JSON 序列化完成           活 2 层(Service→Web)
+```
+
+### 二、三条铁律（对应 §六 的事故场景）
+
+```text
+① PO 永远不出 Service——不给 Controller、不给前端（防泄露/懒加载爆炸）
+② VO 永远不进数据库——不直接 save VO（结构不匹配 + 耦合表结构）
+③ DTO 做边界信使——进（请求 DTO）出（响应 VO）都走它，层与层不共用
+```
+
+### 一句话
+
+```text
+一次请求 = 对象的接力赛：
+  DTO 跑第一棒（进）→ PO 跑数据段 → VO 跑最后一棒（出）
+  每种对象只在"自己那一棒"活着，交接靠 Mapper——
+  这就是为什么项目里有 29 个"看起来很像"的类：它们是不同赛段的选手。
+```
+### 先明确一组同义词：PO ≡ Entity（学员问：是同一个意思吗）
+
+``text
+是同一个东西，两种叫法：
+  PO（Persistent Object，持久化对象）—— 早期企业教程的叫法
+  Entity —— JPA 的官方术语（@Entity 注解标记的类就叫 Entity）
+
+本项目：ResearchTaskEntity（类名带 Entity 后缀）= 就是一个 PO，
+负责映射 research_task 表的一行。
+
+对照：DTO/VO 就没有 @Entity 注解——它们不映射表，所以不是 Entity。
+``
+
+### 图里没展开的：BO / DO / DDD（补充说明）
+
+```text
+BO（Business Object，业务对象）：
+  Service 内部"多源组装"出的中间对象——不在接口暴露、不进数据库，
+  只为完成一段复杂业务逻辑而存在。
+  项目真实例子：ResearchReportAssemblyService.ReportDraft
+    （报告组装：把步骤执行结果 + 来源资料 + LLM 摘要拼成"报告草稿"，
+     草稿不是 Entity 也不是 Response，用完即弃——这就是 BO）
+  图中位置：Service 泳道内部（不出泳道）
+
+DO（Domain Object，领域对象）：
+  来自 DDD（Domain-Driven Design，领域驱动设计）流派——
+  "让代码结构贴合业务语言"：领域层对象带业务行为（不只是 getter/setter）。
+  本项目是简化三层（无独立领域层）→ Entity 实际承担 PO+DO 双重角色
+  （既映射表，也承载部分业务规则如状态校验）。
+
+DDD 不是一种对象类型，是一种设计方法论：
+  分层：用户接口层 → 应用层 → 领域层 → 基础设施层
+  核心概念：实体/值对象/聚合/领域服务/仓储
+  什么时候学：项目变复杂（业务规则多到 Service 塞不下）再深入——
+  现在知道"DO ≈ Entity 的 DDD 叫法"即可，不过度设计。
+```

@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1620" height="675" font-family="Microsoft YaHei,PingFang SC,sans-serif">
+<defs>
+<marker id="hr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#555"/></marker>
+<marker id="hl" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7 z" fill="#2e7d32"/></marker>
+</defs>
+<rect width="1620" height="675" fill="#fafbfd"/>
+<text x="1185" y="218" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">AOP 通用骨架：@Around + pjp.proceed()（每层 = 一个切面；几层切面就几层洋葱）</text>
+
+<rect x="900" y="232" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="948" y="253" text-anchor="middle" font-size="11" fill="#e65100">切面 ① · 前置</text>
+<line x1="996" y1="248" x2="1014" y2="248" stroke="#ff8f00" marker-end="url(#arr)"/>
+<rect x="1016" y="232" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1064" y="253" text-anchor="middle" font-size="11" fill="#e65100">切面 ② · 前置</text>
+<line x1="1112" y1="248" x2="1130" y2="248" stroke="#ff8f00" marker-end="url(#arr)"/>
+<rect x="1132" y="232" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1180" y="253" text-anchor="middle" font-size="11" fill="#e65100">切面 ③ · 前置</text>
+<line x1="1228" y1="248" x2="1246" y2="248" stroke="#ff8f00" marker-end="url(#arr)"/>
+<rect x="1248" y="232" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1296" y="253" text-anchor="middle" font-size="11" fill="#e65100">切面 N · 前置</text>
+<line x1="1344" y1="248" x2="1362" y2="248" stroke="#ff8f00" marker-end="url(#arr)"/>
+<rect x="1364" y="225" width="116" height="46" rx="5" fill="#ffffff" stroke="#455a64" stroke-width="1.5"/><text x="1422" y="245" text-anchor="middle" font-size="11" font-weight="bold" fill="#263238">真实方法</text><text x="1422" y="262" text-anchor="middle" font-size="10" fill="#607d8b">Controller/Service</text>
+<text x="1185" y="288" text-anchor="middle" font-size="10" fill="#8d6e63">↑ 每层 @Around 里的 proceed() 一路放行到真实方法；返回时逆序执行各层后置（异常也走退出）</text>
+<polyline points="1422,271 1422,314 1352,314" fill="none" stroke="#2e7d32" stroke-width="1.6" marker-end="url(#hl)"/>
+
+<rect x="1248" y="298" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1296" y="319" text-anchor="middle" font-size="11" fill="#e65100">切面 N · 后置</text>
+<line x1="1248" y1="314" x2="1230" y2="314" stroke="#2e7d32" marker-end="url(#hl)"/>
+<rect x="1132" y="298" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1180" y="319" text-anchor="middle" font-size="11" fill="#e65100">切面 ③ · 后置</text>
+<line x1="1132" y1="314" x2="1114" y2="314" stroke="#2e7d32" marker-end="url(#hl)"/>
+<rect x="1016" y="298" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="1064" y="319" text-anchor="middle" font-size="11" fill="#e65100">切面 ② · 后置</text>
+<line x1="1016" y1="314" x2="998" y2="314" stroke="#2e7d32" marker-end="url(#hl)"/>
+<rect x="900" y="298" width="96" height="32" rx="5" fill="#fff3e0" stroke="#ff8f00"/><text x="948" y="319" text-anchor="middle" font-size="11" fill="#e65100">切面 ① · 后置</text>
+
+<text x="1185" y="352" text-anchor="middle" font-size="10" fill="#c07900">4 层只是示意（贴几个切面注解就有几层）；"前置/后置"里放什么业务逻辑由各切面自己决定</text>
+
+
+
+<text x="1615" y="58" text-anchor="end" font-size="11" font-weight="bold" fill="#e65100">▲ 橙色块 = AOP 环绕过程（进入 → 退出）</text>
+<text x="810" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a1a2e">横向全链路：请求去程（上）与响应回程（下）—— 洋葱的"去回"本质</text>
+
+<rect x="35" y="85" width="110" height="52" rx="6" fill="#37474f"/>
+<text x="90" y="107" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">Client</text>
+<text x="90" y="126" text-anchor="middle" fill="#cfd8dc" font-size="11">客户端</text>
+
+<rect x="185" y="85" width="130" height="52" rx="6" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5"/>
+<text x="250" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#e65100">Filter1 · 前置</text>
+<text x="250" y="123" text-anchor="middle" font-size="11" fill="#b26a00">doFilter 前半段</text>
+<line x1="145" y1="111" x2="180" y2="111" stroke="#555" marker-end="url(#hr)"/>
+<line x1="315" y1="111" x2="350" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="355" y="85" width="130" height="52" rx="6" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5"/>
+<text x="420" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#e65100">Filter2 · 前置</text>
+<text x="420" y="123" text-anchor="middle" font-size="11" fill="#b26a00">chain.doFilter()</text>
+<line x1="485" y1="111" x2="520" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="525" y="85" width="160" height="52" rx="6" fill="#e8eaf6" stroke="#3f51b5" stroke-width="1.5"/>
+<text x="605" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a237e">DispatcherServlet</text>
+<text x="605" y="123" text-anchor="middle" font-size="11" fill="#3949ab">MVC 核心分发</text>
+<line x1="685" y1="111" x2="710" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="715" y="79" width="170" height="64" rx="6" fill="#c8e6c9" stroke="#2e7d32" stroke-width="2"/>
+<text x="800" y="101" text-anchor="middle" font-size="13" font-weight="bold" fill="#1b5e20">Interceptor</text>
+<text x="800" y="120" text-anchor="middle" font-size="11" fill="#1b5e20">preHandle（正序进）</text>
+<text x="800" y="136" text-anchor="middle" font-size="10" fill="#2e7d32">三钩子之一</text>
+<line x1="885" y1="111" x2="910" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="915" y="85" width="140" height="52" rx="6" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5"/>
+<text x="985" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#0d47a1">Controller</text>
+<text x="985" y="123" text-anchor="middle" font-size="11" fill="#1565c0">接收 DTO（@Valid）</text>
+<line x1="1055" y1="111" x2="1090" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="1095" y="85" width="140" height="52" rx="6" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5"/>
+<text x="1165" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#0d47a1">Service</text>
+<text x="1165" y="123" text-anchor="middle" font-size="11" fill="#1565c0">业务 + 对象转换</text>
+<line x1="1235" y1="111" x2="1270" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="1275" y="85" width="130" height="52" rx="6" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1.5"/>
+<text x="1340" y="105" text-anchor="middle" font-size="13" font-weight="bold" fill="#4a148c">Mapper/DAO</text>
+<text x="1340" y="123" text-anchor="middle" font-size="11" fill="#6a1b9a">PO/Entity</text>
+<line x1="1405" y1="111" x2="1440" y2="111" stroke="#555" marker-end="url(#hr)"/>
+
+<rect x="1445" y="85" width="130" height="52" rx="6" fill="#5d4037"/>
+<text x="1510" y="107" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">DB 数据库</text>
+<text x="1510" y="126" text-anchor="middle" fill="#d7ccc8" font-size="11">SELECT / INSERT</text>
+
+
+<polyline points="1510,137 1510,456 1412,456" fill="none" stroke="#2e7d32" stroke-width="2" marker-end="url(#hl)"/>
+<text x="1522" y="320" font-size="11" fill="#2e7d32" transform="rotate(90 1522 320)">响应沿原路返回</text>
+<rect x="1275" y="430" width="130" height="52" rx="6" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="1.5"/>
+<text x="1340" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#4a148c">PO / Entity</text>
+<text x="1340" y="468" text-anchor="middle" font-size="11" fill="#6a1b9a">回程（不出 Service）</text>
+<line x1="1275" y1="456" x2="1240" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="1095" y="430" width="140" height="52" rx="6" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5"/>
+<text x="1165" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#0d47a1">Service 组装</text>
+<text x="1165" y="468" text-anchor="middle" font-size="11" fill="#1565c0">Mapper：PO → VO ★</text>
+<line x1="1095" y1="456" x2="1060" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="915" y="430" width="140" height="52" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+<text x="985" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">Controller 返回</text>
+<text x="985" y="468" text-anchor="middle" font-size="11" fill="#2e7d32">VO（不含敏感字段）</text>
+<line x1="915" y1="456" x2="880" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="725" y="430" width="150" height="52" rx="6" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+<text x="800" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">postHandle</text>
+<text x="800" y="468" text-anchor="middle" font-size="11" fill="#2e7d32">Interceptor · 逆序退出</text>
+<line x1="715" y1="456" x2="710" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="505" y="430" width="200" height="52" rx="6" fill="#e8eaf6" stroke="#3f51b5" stroke-width="1.5"/>
+<text x="605" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a237e">视图渲染 / 序列化</text>
+<text x="605" y="468" text-anchor="middle" font-size="11" fill="#3949ab">随后 afterCompletion（必执行）</text>
+<line x1="505" y1="456" x2="490" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="355" y="430" width="130" height="52" rx="6" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5"/>
+<text x="420" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">Filter2 · 后置</text>
+<text x="420" y="468" text-anchor="middle" font-size="11" fill="#b26a00">doFilter 后半段</text>
+<line x1="355" y1="456" x2="320" y2="456" stroke="#2e7d32" marker-end="url(#hl)"/>
+
+<rect x="185" y="430" width="130" height="52" rx="6" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5"/>
+<text x="250" y="450" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">Filter1 · 后置</text>
+<text x="250" y="468" text-anchor="middle" font-size="11" fill="#b26a00">doFilter 后半段</text>
+
+
+<polyline points="150,456 90,456 90,145" fill="none" stroke="#2e7d32" stroke-width="2" marker-end="url(#hl)"/>
+<text x="102" y="300" font-size="11" fill="#2e7d32" transform="rotate(90 102 300)">响应沿原路返回 Client</text>
+
+<line x1="985" y1="141" x2="985" y2="161" stroke="#1976d2" stroke-dasharray="3,2"/>
+<text x="985" y="176" text-anchor="middle" font-size="11" fill="#0d47a1">① 入参 DTO（@Valid）</text>
+<line x1="1165" y1="141" x2="1165" y2="161" stroke="#ef6c00" stroke-dasharray="3,2"/>
+<text x="1165" y="176" text-anchor="middle" font-size="11" fill="#e65100">② new PO/Entity（出生）</text>
+<line x1="1340" y1="141" x2="1340" y2="161" stroke="#7b1fa2" stroke-dasharray="3,2"/>
+<text x="1340" y="176" text-anchor="middle" font-size="11" fill="#6a1b9a">③ PO 带回 id（不出 Service）</text>
+<line x1="985" y1="406" x2="985" y2="426" stroke="#2e7d32" stroke-dasharray="3,2"/>
+<text x="985" y="402" text-anchor="middle" font-size="11" fill="#2e7d32">④ 出参 VO（PO→VO 转换出生）</text>
+
+<text x="250" y="340" text-anchor="middle" font-size="11" fill="#b26a00">上排 = 去程（由外入内）</text>
+<text x="250" y="360" text-anchor="middle" font-size="11" fill="#2e7d32">下排 = 回程（由内向外）</text>
+<rect x="35" y="520" width="1550" height="128" rx="8" fill="#f5f5f5" stroke="#bdbdbd"/>
+<text x="55" y="545" font-size="13" font-weight="bold" fill="#333">服务端视角的"栈式"执行顺序（Filter 就是这个形状）：</text>
+<text x="55" y="568" font-size="12" fill="#555">请求进入 Filter1 → doFilter 前半段 → chain.doFilter() → 请求进入 Filter2 → doFilter 前半段 → chain.doFilter() → DispatcherServlet/Controller 处理</text>
+<text x="55" y="590" font-size="12" fill="#555">← 生成响应 ← Filter2 doFilter 后半段 ← Filter2 结束 ← Filter1 doFilter 后半段 ← Filter1 结束 ← 响应返回客户端</text>
+<text x="55" y="610" font-size="11" fill="#888">★ 去程和回程对称 = 洋葱的两面；Filter/Interceptor/AOP 全部遵循这个模式（区别只是名字和触发点）</text>
+<text x="55" y="628" font-size="11" fill="#666">Interceptor 三钩子归属：preHandle（正序进）→ postHandle（视图渲染前，逆序出）→ afterCompletion（渲染后，逆序出，无论成功失败必执行）—— 三者都属于 Interceptor，不在 Filter</text>
+</svg>

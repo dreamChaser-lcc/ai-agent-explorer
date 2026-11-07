@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="1220" font-family="Microsoft YaHei,PingFang SC,sans-serif">
+<defs>
+<marker id="a2" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555"/></marker>
+<marker id="a2r" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#c0392b"/></marker>
+</defs>
+<rect width="1040" height="1220" fill="#fafbfd"/>
+<text x="520" y="28" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a1a2e">完整 Web 请求生命周期（本项目真实组件）</text>
+
+<rect x="380" y="50" width="280" height="36" rx="6" fill="#e8eaf6" stroke="#3f51b5"/>
+<text x="520" y="73" text-anchor="middle" font-size="13" fill="#1a237e">客户端 HTTP 请求 → Tomcat 连接器</text>
+<line x1="520" y1="86" x2="520" y2="108" stroke="#555" marker-end="url(#a2)"/>
+
+<rect x="60" y="112" width="920" height="152" rx="10" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+<text x="80" y="134" font-size="14" font-weight="bold" fill="#0d47a1">Filter 层（Servlet 规范，@Order 由小到大，在 DispatcherServlet 【之外】）</text>
+<text x="80" y="163" font-size="13" fill="#0d47a1">① TokenAuthFilter　　Order=1　鉴权：401 直接写 JSON 短路（条件启用 app.demo.token-auth-enabled）</text>
+<text x="80" y="190" font-size="13" fill="#0d47a1">② BodyCachingFilter　 Order=2　缓存请求体（Controller 可重复读）</text>
+<text x="80" y="214" font-size="13" fill="#0d47a1">③ RequestTraceFilter　默认序　生成追踪 ID（日志全链路串联）</text>
+<line x1="520" y1="264" x2="520" y2="286" stroke="#555" marker-end="url(#a2)"/>
+
+<rect x="100" y="290" width="840" height="600" rx="10" fill="#f5f5f5" stroke="#616161" stroke-width="2"/>
+<text x="120" y="312" font-size="14" font-weight="bold" fill="#212121">DispatcherServlet（Spring MVC 核心，所有 /api 请求在这里分发）</text>
+<text x="120" y="335" font-size="13" fill="#333">HandlerMapping：按 @GetMapping 查映射表 → 找到 Controller 方法 + 拦截器列表</text>
+
+<rect x="130" y="350" width="780" height="500" rx="8" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+<text x="148" y="372" font-size="14" font-weight="bold" fill="#1b5e20">Interceptor 链（HandlerInterceptor，preHandle 顺序执行）</text>
+<text x="148" y="398" font-size="13" fill="#1b5e20">① PermissionInterceptor（Sp8InterceptorConfiguration 注册，/api/**）权限校验</text>
+<text x="148" y="423" font-size="13" fill="#1b5e20">② RequestTraceInterceptor（WebRequestTraceConfiguration 注册，/api/**）追踪耗时</text>
+
+<rect x="165" y="440" width="710" height="380" rx="8" fill="#fff3e0" stroke="#ef6c00" stroke-width="2"/>
+<text x="183" y="462" font-size="14" font-weight="bold" fill="#e65100">AOP 代理层（方法级环绕，按 @Order 由小到大；★ 这就是"看不见的调用"发生地）</text>
+<text x="183" y="488" font-size="13" fill="#e65100">CacheInterceptor　　　@Cacheable　  命中 → 直接返回（真实方法不执行）</text>
+<text x="183" y="513" font-size="13" fill="#e65100">TransactionInterceptor @Transactional 开启/提交/回滚事务</text>
+<text x="183" y="538" font-size="13" fill="#e65100">AuditAspect　　　　　 @AuditLog　　 审计日志（场景⑤）</text>
+<text x="183" y="563" font-size="13" fill="#e65100">TraceLogAspect　　　　@TraceLog　　 方法耗时追踪（SP7）</text><rect x="200" y="580" width="640" height="110" rx="6" fill="#ffffff" stroke="#455a64" stroke-width="1.5"/>
+<text x="520" y="602" text-anchor="middle" font-size="13" font-weight="bold" fill="#263238">真实业务方法（代理放行后执行）</text>
+<text x="520" y="630" text-anchor="middle" font-size="14" fill="#263238">Controller  →  Service  →  DAO/Repository  →  DB</text>
+<text x="520" y="658" text-anchor="middle" font-size="12" fill="#607d8b">（参数校验 / 业务规则 / 缓存查库 / 实体↔响应转换）</text>
+<text x="520" y="680" text-anchor="middle" font-size="12" fill="#607d8b">（PO→VO 转换在本层完成：PO 不出 Service）</text>
+<text x="183" y="722" font-size="13" fill="#e65100">← 收尾（沿原路返回）：切面记录结果 → 事务提交/回滚 → @CacheEvict 删缓存 → 缓存写回</text>
+<text x="148" y="770" font-size="13" fill="#1b5e20">postHandle（Controller 返回后，视图渲染前）→ afterCompletion（请求彻底结束，必执行）</text>
+
+<line x1="520" y1="890" x2="520" y2="915" stroke="#555" marker-end="url(#a2)"/>
+<text x="520" y="933" text-anchor="middle" font-size="13" fill="#333">Jackson 序列化（VO → JSON）</text>
+<rect x="380" y="945" width="280" height="36" rx="6" fill="#e8eaf6" stroke="#3f51b5"/>
+<text x="520" y="968" text-anchor="middle" font-size="13" fill="#1a237e">HTTP 响应 → 客户端</text>
+
+<rect x="60" y="1000" width="920" height="185" rx="10" fill="#fdecea" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="8,4"/>
+<text x="80" y="1024" font-size="14" font-weight="bold" fill="#b71c1c">异常路径（两条路，命运不同——面试高频）</text>
+<text x="80" y="1052" font-size="13" fill="#b71c1c">① Filter 层异常：在 Spring MVC 【之外】→ @RestControllerAdvice 管不到！</text>
+<text x="104" y="1076" font-size="12" fill="#555">TokenAuthFilter 401 自己写 JSON 响应的原因（Lesson：Filter 里抛异常要自己兜）</text>
+<text x="80" y="1104" font-size="13" fill="#b71c1c">② MVC/AOP/Service 异常：向上冒泡到 DispatcherServlet → ApiExceptionHandler</text>
+<text x="104" y="1128" font-size="12" fill="#555">@RestControllerAdvice 兜底 → ApiError 统一 JSON（code/message/path/timestamp）</text>
+<text x="80" y="1158" font-size="12" fill="#777">记忆口诀：Filter 在外自己兜，MVC 在内 advice 兜；AOP 在方法上，命中缓存它就不走。</text>
+</svg>

@@ -422,3 +422,277 @@ logging:
 4. **Servlet 单实例多线程**——成员变量是所有请求共享的，这是 Controller 不能有状态的根本原因；
 5. **Spring Boot 只是"又插了一层"**——`DispatcherServlet` 是唯一注册的 Servlet，你写的 `@GetMapping` 是它内部的第二层路由；
 6. **Spring Boot 3 用 `jakarta.servlet`**，`@WebServlet` 必须配 `@ServletComponentScan`。
+
+## 附录：完整请求生命周期图（2026-11-02，本项目真实组件）
+
+![完整 Web 请求生命周期](../assets/request-lifecycle-flow.svg)
+
+> ↑ 一图看全：Filter（外）→ DispatcherServlet → Interceptor → AOP（缓存/事务/切面）→ 真实方法 → 收尾 → 响应
+
+```text
+图中每个组件的项目出处（可点进源码对照）：
+
+Filter 层（Servlet 规范，@Order 由小到大，在 DispatcherServlet 之外）：
+  ① TokenAuthFilter      Order=1  鉴权（401 短路，条件启用）
+  ② BodyCachingFilter    Order=2  请求体缓存（Controller 可重复读）
+  ③ RequestTraceFilter   默认序   追踪 ID
+
+Interceptor 层（DispatcherServlet 内部）：
+  ① PermissionInterceptor     Sp8InterceptorConfiguration（/api/**）
+  ② RequestTraceInterceptor   WebRequestTraceConfiguration（/api/**）
+
+AOP 代理层（方法级环绕，就是"看不见的调用"发生地）：
+  CacheInterceptor        @Cacheable    命中即返回（方法体不执行）
+  TransactionInterceptor  @Transactional 事务开启/提交/回滚
+  AuditAspect             @AuditLog     审计（场景⑤）
+  TraceLogAspect          @TraceLog     耗时追踪（SP7）
+
+异常路径（两条路命运不同）：
+  ① Filter 层异常 → @RestControllerAdvice 管不到（在 MVC 之外）
+     → TokenAuthFilter 401 自己写 JSON 的原因
+  ② MVC/AOP/Service 异常 → ApiExceptionHandler 兜底 → ApiError 统一 JSON
+```
+
+**记忆口诀**：
+
+```text
+Filter 在外自己兜，MVC 在内 advice 兜；
+AOP 在方法上，命中缓存它就不走。
+```
+
+**读图指南：为什么画成"洋葱"（嵌套框）**：
+
+```text
+嵌套框同时编码三个语义（竖排流水线做不到）：
+
+① 进入方向：外 → 内（Filter 包 Interceptor，Interceptor 包 AOP，AOP 包方法）
+② 返回方向：内 → 外（沿原路退出，每层在 exit 位置执行收尾）
+③ 作用域：越外层"兜底能力"越弱——这是图旁注红框的核心
+
+三种环绕机制的差异（读图要点）：
+┌─────────────┬────────────┬──────────────────────┬──────────────────────┐
+│ 机制         │ 进入钩子    │ 离开钩子              │ 异常能否被 advice 接住 │
+├─────────────┼────────────┼──────────────────────┼──────────────────────┤
+│ Filter       │ doFilter 前 │ doFilter 后(finally) │ ✗ 不能（在 MVC 之外）  │
+│ Interceptor  │ preHandle   │ postHandle/afterCompletion │ ✓ 能          │
+│ AOP          │ @Around 前  │ proceed 后           │ ✓ 能                  │
+└─────────────┴────────────┴──────────────────────┴──────────────────────┘
+
+位置决定兜底能力：
+  谁在 DispatcherServlet 外面，谁就只能自救（TokenAuthFilter 401 案例）
+```
+**术语辨析：这张图不能叫"Spring Boot 生命周期"**（2026-11-02 学员问）：
+
+```text
+Spring 语境里"生命周期"有三个，时间尺度差三个数量级：
+
+┌──────────────────┬─────────────────────────────────────┬──────────────┬────────────────────────┐
+│ 名词              │ 讲的什么                             │ 时间尺度      │ 本项目对应              │
+├──────────────────┼─────────────────────────────────────┼──────────────┼────────────────────────┤
+│ Spring Boot 应用生命周期 │ 启动→就绪→关闭（进程一生）       │ 一次部署      │ SpringApplication.run / ApplicationStartedEvent / @PreDestroy │
+│ Bean 生命周期      │ 实例化→注入→@PostConstruct→代理→使用→@PreDestroy │ 启动期内 │ BeanLifecycleDemo（SP2） │
+│ 请求生命周期(本图) │ Filter→DispatcherServlet→Interceptor→AOP→方法→响应 │ 每次请求毫秒级 │ request-lifecycle-flow.svg │
+└──────────────────┴─────────────────────────────────────┴──────────────┴────────────────────────┘
+
+包含关系：应用生命周期（进程级）⊃ Bean 生命周期（启动阶段 N 次）⊃ 请求生命周期（每请求一次）
+
+本图准确叫法：① 一次 HTTP 请求的处理流程 ② 请求生命周期（Request Lifecycle） ③ Web 请求处理链路
+
+容易混淆的佐证：
+  图里的代理（Cache/事务/切面）是在【Bean 生命周期】的
+  postProcessAfterInitialization 阶段生成的 CGLIB 代理——
+  两个生命周期在此交汇，但图只画了"请求"这个尺度。
+```
+## 附录二：横向全链路图（请求去程 + 响应回程，含对象流转）
+
+![横向全链路：去程与回程](../assets/request-chain-horizontal.svg)
+
+> ↑ 上排去程（左→右）、下排回程（右→左）——洋葱的两面；中间标注 DTO/PO/VO 的出生与归属
+
+```text
+服务端视角的"栈式"执行顺序（Filter 就是这个形状）：
+
+  请求进入 Filter1
+      → doFilter() 前半段
+          → chain.doFilter()
+              → 请求进入 Filter2
+                  → doFilter() 前半段
+                      → chain.doFilter()
+                          → Servlet / Controller 处理
+                          ← 生成响应
+                      ← doFilter() 后半段
+                  ← Filter2 结束
+              → doFilter() 后半段
+          ← Filter1 结束
+  响应返回客户端
+```
+
+**读图要点**：
+
+```text
+① 上排（去程）：Client → Filter1前 → Filter2前 → DispatcherServlet → preHandle → Controller → Service → DAO → DB
+② 下排（回程）：DB → PO/Entity → Service 组装(Mapper PO→VO) → Controller 返回 VO → postHandle → 渲染/序列化 → Filter2后 → Filter1后 → Client
+③ 对象流转：
+   · 入参 DTO 在 Controller 出生（@Valid 校验）
+   · PO/Entity 在 Service/DAO 出生（永不出 Service，回程里就变 VO 了）
+   · VO 在 Mapper 转换时出生，随 JSON 回到前端
+```
+
+## 附录三：三种"洋葱"对照（中间件 vs Filter vs Interceptor）
+
+![中间件 vs Filter vs Interceptor 洋葱对照](../assets/middleware-onion-compare.svg)
+
+```text
+三者是同一个模型，差别只在【名字与触发方式】：
+
+中间件（Express/Koa）：代码 = 前置 + next() + 后置      ← 通用模式的原型
+Filter（Servlet 规范）：代码 = 前置 + chain.doFilter() + 后置
+Interceptor（Spring MVC）：反过来了——框架调钩子：
+    preHandle(正序进) → 业务 → postHandle(逆序出) → afterCompletion(逆序，必执行)
+
+★ 共同点：去程正序、回程逆序（调用栈的形状）
+★ Java 选型：跨切面通用逻辑（日志/编码/鉴权）→ Filter；
+              需要知道 Controller 信息/Spring Bean → Interceptor
+```
+### 通俗解释：AOP 图里的"Cache 进入 / 事务 进入"是什么意思（2026-11-02 学员问）
+
+**先破误解**：AOP 不是"四个东西排队"，是**四层包装纸层层包住真实方法**；
+拆的时候从最外层开始 → 所以有"进入"和"退出"两排。
+
+**"进入/退出" = `@Around` 方法里 `proceed()` 的前半段/后半段**：
+
+```java
+@Around("...")                            // ← Cache 切面
+Object around(ProceedingJoinPoint pjp) {
+
+    // ═══ 进入（方法执行前）═══
+    Object cached = cache.get(key);
+    if (cached != null) {
+        return cached;                    // ★ 命中 → 内层全跳过
+    }
+
+    Object result = pjp.proceed();        // ═══ 放行：进入下一层 ═══
+
+    // ═══ 退出（方法执行后）═══
+    cache.put(key, result);
+    return result;
+}
+```
+
+**四层各自的进入/退出**：
+
+| 层 | 进入时 | 退出时 | 生活类比 |
+|---|---|---|---|
+| Cache | 查缓存，有就直接给 | 把返回值写进缓存 | 前台查"现成复印件"——有就不去后厂做 |
+| 事务 | BEGIN（开草稿单） | 成功 COMMIT / 失败 ROLLBACK | 记账：先草稿、最后确认或撕掉 |
+| 审计 | 记谁调的/参数/时间 | 记结果（成功/失败） | 门卫登记进出 |
+| 追踪 | 记开始时间戳 t0 | 耗时=now-t0，打日志 | 按秒表 |
+
+**一个请求走一遍（POST /api/tasks）**：
+
+```text
+Cache 进入（没缓存）→ 事务 进入(BEGIN) → 审计 进入(记录"u1 调 createTask")
+  → 追踪 进入(t0)
+     ★ 真实方法：Controller→Service→DAO→INSERT→Response
+  → 追踪 退出(12ms) → 审计 退出(记录成功) → 事务 退出(COMMIT) → Cache 退出(写缓存)
+```
+
+**第二次同请求（缓存命中）**：
+
+```text
+Cache 进入 → 有缓存 → 直接返回
+→ 事务/审计/追踪/真实方法全都不执行（现象：没有 SQL、没有事务日志）
+```
+
+**中途异常**：
+
+```text
+追踪 退出(失败,5ms) → 审计 退出(记录失败) → 事务 退出(ROLLBACK) → Cache 退出(不写缓存)
+→ 每层"退出"必执行（finally 语义）——这就是画成上下两排的意义
+```
+
+**为什么进入正序/退出逆序**：
+
+```text
+包礼物：最里=追踪 → 审计 → 事务 → 最外=Cache
+拆礼物：Cache → 事务 → 审计 → 追踪
+进入=从外往里，退出=从里往外 → 洋葱的两面
+```
+### 追问：AOP 图里的"缓存"是谁的？自己写的吗（2026-11-02）
+
+**不是自己写的**——是 Spring 框架的缓存拦截器（与事务同构的环绕切面）。
+
+**你写的只有三样**：
+
+```text
+① 注解：@Cacheable(value = RedisConstant.CACHE_REPORT, key = "#taskId")
+② 配置：CacheConfiguration（Redis 后端 + Jackson 序列化 + TTL 30 分钟）
+③ key 常量：RedisConstant（T5）
+→ 查/写缓存的逻辑一行没写
+```
+
+**框架执行的**：
+
+```text
+@Cacheable 被扫描 → Bean 生成代理 → CacheInterceptor.invoke()
+  ① 解析注解：cacheName="report"、SpEL("#taskId") → "123"
+  ② CacheManager.getCache("report")（→ 你的 RedisCacheManager）
+  ③ cache.get("123") → 实际发 GET report::123
+      命中 → 直接返回（真实方法不执行）
+      未命中 → proceed() → 真实方法 → cache.put()
+              → 实际发 SET report::123 <JSON> EX 1800
+```
+
+**三种"缓存"别混**：
+
+| 名字 | 是什么 | 本项目 | 谁写的 |
+|---|---|---|---|
+| Spring Cache 抽象 | @Cacheable + CacheInterceptor | getReportByTaskId 注解 | Spring 框架 |
+| Redis 缓存后端 | CacheManager + 序列化/TTL 配置 | CacheConfiguration | 配置 10 行是你写的 |
+| Caffeine 本地缓存 | T6 教学实现（L1/L2 演示） | MultiLevelCache（未接入生产） | 教学示例 |
+
+**一句话**：注解声明"要缓存"，配置决定"缓存放哪、怎么存"，逻辑由框架的
+CacheInterceptor 执行——和 @Transactional 完全同一个套路（贴标签，框架干活）。
+### 追问二：AOP 的通用骨架 vs 具体场景（2026-11-02 学员纠正，重要）
+
+**学员纠对了**：此前讲的"AOP 四层（Cache/事务/审计/追踪）"是**本项目配了这些注解的组合场景**，
+不是 AOP 本身。AOP 的通用骨架只有两个关键词：
+
+```java
+@Around("切点表达式")                       // ★ 关键词 1：环绕
+Object around(ProceedingJoinPoint pjp) {
+
+    前置逻辑();                             //   进入（内容由具体切面决定）
+
+    Object result = pjp.proceed();          // ★ 关键词 2：放行到下一层/真实方法
+
+    后置逻辑();                             //   退出
+    return result;
+}
+```
+
+```text
+@Around   = "我要包住这个方法"（前置+后置都归我管）
+proceed() = "放行"（★ 不调用 = 真实方法不执行 = 短路）
+—— 骨架固定，前置/后置的"内容"才是各切面的业务
+```
+
+**不同切面 = 同一骨架的不同填空**：
+
+| 切面 | 前置 | 必须 proceed？ | 后置 |
+|---|---|---|---|
+| 日志（TraceLogAspect） | 记参数、t0 | ✅ 必须 | 记结果、耗时 |
+| 审计（AuditAspect） | 记操作人 | ✅ 必须 | 记结果落库 |
+| 事务（TransactionInterceptor） | BEGIN | ✅ 必须 | COMMIT / ROLLBACK |
+| 缓存（CacheInterceptor） | 查缓存 | ⚠️ 命中可不调用（唯一短路者） | 写缓存 |
+
+**"洋葱"不是框架规定，是 proceed() 链的自然产物**：
+
+```text
+只配日志 → 1 层；日志+事务 → 2 层；本项目的组合 → 4 层
+层间靠 proceed() 串起来：第1层 → 第2层 → ... → 真实方法
+→ 有几层切面就有几层洋葱；proceed 是"往下钻"的唯一通道
+```
+
+**结论**：打日志的 AOP 不需要缓存——它的前置只是记时间、后置算耗时；
+别把"具体业务场景的组合"误当成"AOP 机制本身"。
