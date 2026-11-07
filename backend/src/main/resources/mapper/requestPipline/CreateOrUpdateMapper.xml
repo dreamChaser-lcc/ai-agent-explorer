@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 请求管线练习：与 CreateOrUpdateMapper 接口一一对应（表 request_pipline，参数是 PO） -->
+<mapper namespace="com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.requestPipline.CreateOrUpdateMapper">
+
+    <!-- 新建：id 由 JPA 的 GenerationType.UUID 在 insert 前生成（MyBatis 场景下由实体赋值） -->
+    <insert id="insert">
+        INSERT INTO request_pipline (id, request_id, request_type, description, create_time, update_time)
+        VALUES (#{po.id},
+                #{po.requestId},
+                #{po.requestType},
+                #{po.description},
+                #{po.createTime},
+                #{po.updateTime})
+    </insert>
+
+    <!-- 更新：按 request_id 改描述 + 刷新 update_time -->
+    <update id="update">
+        UPDATE request_pipline
+        SET description = #{po.description},
+            update_time = #{po.updateTime}
+        WHERE request_id = #{po.requestId}
+    </update>
+
+</mapper>
