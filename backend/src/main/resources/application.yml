@@ -87,7 +87,8 @@ management:
         include: health,info,env
 
 mybatis:
-  mapper-locations: classpath:mapper/*.xml
+  # 递归匹配子目录（练习 XML 在 mapper/requestPipline/ 下；只写 mapper/*.xml 会扫不到子目录）
+  mapper-locations: classpath:mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
 

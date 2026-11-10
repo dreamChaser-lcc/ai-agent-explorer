@@ -843,6 +843,47 @@ public interface CreateOrUpdateMapper {
    表结构以迁移为准（ddl-auto: validate 只校验 @Entity，本 PO 无 @Entity 不校验）
 ```
 
+### MyBatis 在 application.yml 的配置（练习能跑起来的前提）
+
+```yaml
+mybatis:
+  # ① XML 的位置：** 表示递归匹配子目录
+  #    只写 mapper/*.xml 只能扫到一级目录——练习 XML 在 mapper/requestPipline/ 下会扫不到
+  #    症状：启动不报错，调用 mapper 时 "Invalid bound statement (not found)"
+  mapper-locations: classpath:mapper/**/*.xml
+
+  configuration:
+    # ② 下划线转驼峰：request_id 列 ↔ requestId 字段 自动映射
+    #    关掉后：SELECT request_id 需要 resultMap 或别名，否则字段为 null
+    map-underscore-to-camel-case: true
+
+# ③ SQL 日志：打开的包级日志能看到 prepare / parameters / updates
+logging:
+  level:
+    com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis: debug
+```
+
+**三项配置与本练习的对应关系**：
+
+| 配置 | 作用 | 练习里的体现 |
+|---|---|---|
+| `mapper-locations` | 告诉 MyBatis 去哪加载 XML | 练习 XML 在 `mapper/requestPipline/` → 必须用 `**/*` |
+| `map-underscore-to-camel-case` | 列名 ↔ 字段名自动转换 | `request_id → requestId`、`create_time → createTime` |
+| `logging...mybatis: debug` | 打印真实 SQL 与参数 | 控制台看到 INSERT/UPDATE 的完整语句 |
+
+**依赖来源**：pom 里 `mybatis-spring-boot-starter`（3.0.5）——starter 自动装配 SqlSessionFactory，
+`@Mapper` 由 `@MapperScan` 或注解扫描发现（本项目用 @Mapper 注解逐类标记）。
+
+**踩坑（本练习真实踩到）**：
+
+```text
+配置写 classpath:mapper/*.xml（一级）
+练习 XML 放 mapper/requestPipline/（二级）
+→ 启动正常、调用时报 Invalid bound statement
+→ 改成 classpath:mapper/**/*.xml 解决
+（教训：看到这个报错先查 mapper-locations 的层级 + namespace 是否对得上）
+```
+
 ## 环节 11：异常处理 —— 管线的兜底（第 5 环）
 
 ### 完整代码（`api/controller/requestPipline/RequestPiplineExceptionHandler.java`）
