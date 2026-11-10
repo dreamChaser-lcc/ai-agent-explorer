@@ -27,7 +27,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      # 本地 Redis 无密码时【不要配置本行】：空串会让 Redisson 发 AUTH "" → Redis 报
+      # "ERR Client sent AUTH, but no password is set"。需要密码时用环境变量 $SPRING_DATA_REDIS_PASSWORD 注入。
+      # password: ${REDIS_PASSWORD:}
   kafka:
     # 场景⑥：Kafka 接入（任务消息化——异步执行从"线程池"升级为"消息队列"）
     # 开发环境：本地 docker 单节点（KRaft 模式）；集群化部署（G1）后续按需衔接

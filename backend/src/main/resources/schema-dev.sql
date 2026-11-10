@@ -162,3 +162,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at);
 -- 按操作名筛选（如"所有取消操作"）
 CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log (action);
+
+-- ============================================================
+-- 请求管线练习表（request-pipline · SP11）：DTO → PO → DB → VO 的落点
+-- dev 环境 flyway.enabled=false，建表由本文件（spring.sql.init）负责
+-- ============================================================
+CREATE TABLE IF NOT EXISTS request_pipline (
+    id           UUID PRIMARY KEY,
+    request_id   VARCHAR(64)  NOT NULL,
+    request_type VARCHAR(16)  NOT NULL,
+    description  VARCHAR(512) NOT NULL,
+    create_time  TIMESTAMP WITH TIME ZONE NOT NULL,
+    update_time  TIMESTAMP WITH TIME ZONE NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_request_pipline_request_id ON request_pipline (request_id);

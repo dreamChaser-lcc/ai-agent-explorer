@@ -1292,3 +1292,89 @@ public FilterRegistrationBean<RequestPiplineFilter> filter() {
 每一环都有一个自己写的类，日志顺序 = 链路顺序。
 以后遇到"什么时间调用什么"，先看自己的日志，再回全链路图。
 ```
+---
+
+## 启动与验证指南（2026-11-10 补：照着做就能跑通）
+
+### 启动前检查
+
+```powershell
+Test-NetConnection localhost -Port 5432 -InformationLevel Quiet   # PG 必须 True
+Test-NetConnection localhost -Port 6379 -InformationLevel Quiet   # Redis 建议 True
+psql -U postgres -h localhost -l | Select-String "research_agent" # 库存在
+```
+
+### 启动（三选一，推荐方式 1 项目自带脚本）
+
+```powershell
+# 方式 1（推荐）：项目脚本 —— dev profile + APP_PERSISTENCE_MODE=mybatis + 自动起 Redis（Windows 服务）
+cd backend
+.\start-dev-mybatis.ps1
+# 执行策略报错时：
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\start-dev-mybatis.ps1
+
+# 方式 2：命令行手动跑
+cd backend; mvn spring-boot:run
+
+# 方式 3：IDE 里跑 ResearchAgentApplication 的 main
+```
+
+> 注意：脚本假设 Redis 是 Windows 服务（`Get-Service Redis`）；
+> Docker/WSL 起的 Redis 会打印 "service not found. Skipping."——不影响，6379 通即可。
+> 脚本【不检查 PostgreSQL】——PG 仍需你自己确保在跑。
+
+```powershell
+cd backend; mvn spring-boot:run
+# 或 IDE 里跑 ResearchAgentApplication 的 main
+# 8080 被占：mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=8081
+```
+
+启动成功三看：① `Migrating schema ... to version "2 - request pipline"` ② `Tomcat started on port 8080` ③ `Started ResearchAgentApplication`
+
+### 四步验证（响应 + 日志 + 数据库）
+
+| 步骤 | 操作 | 看什么 |
+|---|---|---|
+| 1 CREATE | POST /api/request-pipline/create（r-001/CREATE/第一次手敲） | 11 行日志顺序（Filter→Interceptor→AOP→Controller→Service 三段式→…→Filter）；MyBatis 打印 `INSERT ... Updates: 1` |
+| 2 查库 | `SELECT request_id, request_type, description FROM request_pipline;` | 一行 r-001 |
+| 3 UPDATE | 同 URL（r-001/UPDATE/改过的描述） | `[Service] ★ PO 出生（update 分支）` + `UPDATE 影响行数=1` |
+| 4 校验失败 | desc 传空串 | HTTP 400；日志【只有 4 行】（Filter 进/preHandle/afterCompletion(异常)/Filter 出）——**AOP/Controller/Service 全不出现**（@Valid 在方法调用前拦截） |
+
+### 可选实验：异常退出路径
+
+```text
+Service.create() 里临时 if (true) throw new IllegalArgumentException("演示异常") → 重启 → 请求
+期望：[AOP] <<< 异常退出 → postHandle【不出现】→ afterCompletion(异常=...) → ExceptionHandler 捕获 → 400
+（验证完把那行删掉）
+```
+
+### 常见失败
+
+```text
+① Connection refused(5432)：PG 没起/密码错
+② Flyway Validate failed：库里有残留表 → DROP TABLE IF EXISTS request_pipline; 重启
+③ 8080 占用 → --server.port=8081
+```
+### 启动踩坑三连（2026-11-10 实跑修复记录）
+
+```text
+① Redis 空密码 AUTH 报错
+   现象：ERR Client sent AUTH, but no password is set（Redisson 启动失败）
+   根因：application.yml 的 password: ${REDIS_PASSWORD:} 默认空串 → Redisson 发 AUTH ""
+   修复：注释掉该行（本地无密码就不要配）；要密码用 SPRING_DATA_REDIS_PASSWORD 环境变量注入
+
+② Nacos discovery 注册失败 → Application run failed
+   现象：NacosServiceRegistry 报错 → Failed to start bean 'webServerStartStop'
+   根因：只禁了 nacos.config，discovery 仍在尝试注册（连不上 192.168.x）
+   修复：JAVA_TOOL_OPTIONS 加 -Dspring.cloud.nacos.discovery.enabled=false
+   （顺带 -Dspring.kafka.admin.auto-create=false：本地无 Kafka 时少等 40 秒超时）
+
+③ Table "request_pipline" not found
+   现象：CREATE/UPDATE 报 BadSqlGrammarException
+   根因：dev 环境 flyway.enabled=false！建表走 spring.sql.init + schema-dev.sql，
+        V2__request_pipline.sql（Flyway）在 dev 下【不会执行】
+   修复：schema-dev.sql 追加建表（CREATE TABLE IF NOT EXISTS，幂等）
+   教训：本项目双建表机制——默认 profile 用 Flyway（V*.sql），dev 用 schema-dev.sql
+```
+
+**最终可用的启动脚本**：`backend/start-dev-mybatis.ps1`（Nacos 双禁 + Kafka 跳过 + mybatis 模式 + 明文 LLM Key）
