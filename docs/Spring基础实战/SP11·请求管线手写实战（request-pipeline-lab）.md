@@ -1378,3 +1378,68 @@ Service.create() 里临时 if (true) throw new IllegalArgumentException("演示�
 ```
 
 **最终可用的启动脚本**：`backend/start-dev-mybatis.ps1`（Nacos 双禁 + Kafka 跳过 + mybatis 模式 + 明文 LLM Key）
+---
+
+## 按学习内容启动（profile 矩阵，2026-11-11 落地）
+
+> 一个入口 `backend/start.ps1`，按你在学什么叠加 profile；默认 lite 零依赖。
+
+| 你在学什么 | 命令 | 需要什么 |
+|---|---|---|
+| 改代码 / 跑练习 / 演示 | `.\start.ps1`（lite） | **无**（H2 + LLM mock，8~20 秒起） |
+| SP11 练习 / MyBatis | `.\start.ps1 -Mode mybatis` | 无 |
+| JPA 模式 | `.\start.ps1 -Mode jpa` | 无 |
+| 场景⑦ 缓存 | `.\start.ps1 -Mode redis` | Redis 6379（懒连接，不调用缓存接口也能起） |
+| 场景⑥ Kafka | `.\start.ps1 -Mode kafka` | Kafka 9092（启动即连，必须有） |
+| 场景⑧ LLM | `.\start.ps1 -Mode llm` | 外网 + 127.0.0.1:7897 代理（key 已内置兜底） |
+| 多模块叠加 | `.\start.ps1 -Mode redis,kafka` | 对应依赖 |
+| 集群特性 | `.\start.ps1 -Mode cluster` | PG + Redis + Kafka + Nacos 全部 |
+
+**profile 结构**：
+
+```text
+application-lite.yml    基础：H2 + flyway off + Redisson 排除 + Kafka 不连 + Nacos 关 + LLM mock + MyBatis
+application-mybatis.yml 叠加：persistence=mybatis
+application-jpa.yml     叠加：persistence=jpa
+application-redis.yml   叠加：app.cache.enabled=true + cache.type=redis
+application-kafka.yml   叠加：listener/admin 开启
+application-llm.yml     叠加：client-impl=http + key（环境变量优先）+ 中转站地址
+application.yml         默认（= cluster）：PG + Redis + Kafka + Nacos 全开
+```
+
+**踩坑（新建机制时全踩了一遍）**：
+
+```text
+① PowerShell 5.1 按 GBK 读无 BOM 的 UTF-8 脚本 → 中文乱码 → 语法错
+   → 所有 .ps1 统一 UTF-8 with BOM
+② lite 下 Flyway 默认仍开 + H2 已有表无 flyway_schema_history → 启动失败
+   → application-lite.yml 加 spring.flyway.enabled: false（建表走 spring.sql.init）
+③ curl 在 PowerShell 里 -d '{\"x\":\"y\"}' 的 \" 字面发送 → MALFORMED_REQUEST
+   → 用 JSON 文件：-d "@body.json"
+```
+### 怎么看 H2 控制台（lite/mybatis 模式，2026-11-12 实测）
+
+```text
+① 启动：.\start.ps1 -Mode mybatis（lite 已内置 spring.h2.console.enabled=true）
+② 浏览器打开：http://localhost:8080/h2-console/    （GET /h2-console 会 302 到登录页）
+③ 登录表单：
+     Driver Class : org.h2.Driver
+     JDBC URL     : jdbc:h2:file:./data/h2db/research-agent;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+                    （相对路径以 backend 为工作目录；不放心就用绝对路径：
+                     jdbc:h2:file:D:/project/lcc-github/ai-agent-explorer/backend/data/h2db/research-agent;MODE=PostgreSQL）
+     User Name    : sa
+     Password     :（空）
+④ Connect → 左侧表清单 → SQL 窗口：
+     SELECT * FROM request_pipline;
+```
+
+**常见坑**：
+
+```text
+① Database not found / 空库 → JDBC URL 路径不对，换绝对路径
+② 看不到表 → 查启动日志是否执行了 spring.sql.init（schema-dev.sql，IF NOT EXISTS 幂等）
+③ Database may be already in use → H2 文件模式只允许一个 JVM 打开；
+   内嵌控制台与应用同一 JVM 不冲突，用外部工具（DBeaver/H2 Shell）连才会撞锁
+④ 改了 application-lite.yml 必须重启才生效
+⑤ 不用控制台也能验证：MyBatis debug 日志有 Preparing: INSERT... / Updates: 1
+```

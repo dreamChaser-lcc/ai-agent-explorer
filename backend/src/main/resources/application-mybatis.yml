@@ -1,0 +1,4 @@
+# mybatis 模块：持久化模式 MyBatis（叠加在 lite 上）
+app:
+  persistence:
+    mode: mybatis

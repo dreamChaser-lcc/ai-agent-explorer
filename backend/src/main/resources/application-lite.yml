@@ -1,0 +1,63 @@
+# ============================================================
+# lite —— 零外部依赖启动（基础 profile，其他模块 profile 叠加在它之上）
+#   用途：改代码 / 跑练习 / 演示 —— 不需要 PG / Redis / Kafka / Nacos
+#   启动：.\start.ps1  （内部 --spring-boot.run.profiles=lite）
+# ============================================================
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: jdbc:h2:file:${user.dir}/data/h2db/research-agent;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # ★ 关闭 Flyway（lite 用 H2 + spring.sql.init 建表；Flyway 只在默认/cluster 用 PG 时启用）
+  flyway:
+    enabled: false
+
+  # H2 建表：spring.sql.init 执行 schema-dev.sql（IF NOT EXISTS 幂等）
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-dev.sql
+
+  # 浏览器查库：http://localhost:8080/h2-console
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # ★ 不创建 Redisson（它启动即连 Redis；排除后 RedissonTaskLock 因 @ConditionalOnBean 自动不建）
+  autoconfigure:
+    exclude: org.redisson.spring.starter.RedissonAutoConfigurationV2
+
+  # ★ 缓存降级为内存版（配合 app.cache.enabled=false，@Cacheable 不会去连 Redis）
+  cache:
+    type: simple
+
+  # ★ Kafka 不连：不启动消费者容器、不尝试建 topic
+  kafka:
+    listener:
+      auto-startup: false
+    admin:
+      auto-create: false
+
+  # ★ Nacos 全关（config + discovery）
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+      discovery:
+        enabled: false
+
+app:
+  cache:
+    enabled: false            # 不建 RedisCacheConfiguration
+  persistence:
+    mode: mybatis             # 练习默认 MyBatis（要用 JPA 时叠加 jpa profile）
+  llm:
+    client: mock              # SimulatedLlmClient，无需外网/代理

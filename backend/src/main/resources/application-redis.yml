@@ -1,0 +1,7 @@
+# redis 模块：开启 Redis 缓存（学场景⑦时叠加；需要本地 Redis 6379）
+app:
+  cache:
+    enabled: true
+spring:
+  cache:
+    type: redis

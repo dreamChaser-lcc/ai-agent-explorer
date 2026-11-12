@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Duration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -32,6 +33,7 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
  * ② 注册 {@code JavaTimeModule}——否则 OffsetDateTime 等 Java 8 时间类型没有序列化支持（会二次爆炸）。</p>
  */
 @Configuration
+@ConditionalOnProperty(prefix = "app.cache", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class CacheConfiguration {
 
     @Bean

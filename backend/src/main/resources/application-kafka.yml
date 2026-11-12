@@ -1,0 +1,10 @@
+# kafka 模块：开启 Kafka（学场景⑥时叠加；需要本地 Kafka 9092）
+spring:
+  kafka:
+    listener:
+      auto-startup: true
+    admin:
+      auto-create: true
+app:
+  kafka:
+    enabled: true

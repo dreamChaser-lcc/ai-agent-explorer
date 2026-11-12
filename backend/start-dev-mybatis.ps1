@@ -1,4 +1,4 @@
-# 启动 Redis（如果未运行）
+﻿# 启动 Redis（如果未运行）
 $redisService = Get-Service Redis -ErrorAction SilentlyContinue
 if ($redisService -and $redisService.Status -ne "Running") {
     Write-Host "Starting Redis..." -ForegroundColor Yellow

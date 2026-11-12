@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.io.IOException;
 
 /**
@@ -35,6 +37,11 @@ public class RequestPiplineFilter implements Filter {
             throws IOException, ServletException {
         long start = System.currentTimeMillis();
         System.out.println("[Filter]   >>> 进入 doFilter（DispatcherServlet 之前）");
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        System.out.println("[CORS-Debug] Origin=" + httpRequest.getHeader("Origin")
+        + " | UA=" + httpRequest.getHeader("User-Agent")
+        + " | RemoteAddr=" + httpRequest.getRemoteAddr());
+
         try {
             chain.doFilter(request, response);   // 放行：后面才会走到 DispatcherServlet
         } finally {

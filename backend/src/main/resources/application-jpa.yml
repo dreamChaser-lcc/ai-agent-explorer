@@ -1,0 +1,4 @@
+# jpa 模块：持久化模式 JPA（叠加在 lite 上）
+app:
+  persistence:
+    mode: jpa

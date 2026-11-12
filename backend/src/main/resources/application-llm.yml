@@ -1,0 +1,11 @@
+# llm 模块：接真实 LLM 中转站（学场景⑧时叠加；需要外网 + 代理）
+#   api-key 用 ${OPENAI_API_KEY:兜底真key}：设置了环境变量则优先用它，否则用兜底值
+#   client-impl=http：走代码层代理（APP_LLM_PROXY_HOST/PORT），比 JVM 代理简单
+app:
+  llm:
+    client-impl: http
+    api-key: ${OPENAI_API_KEY:sk-gONcRZzpgzB8N0Rsw84pYVe28mAgnj7hJ5KHDRxvQ0EGUIQW}
+    base-url: https://agentrouter.org/v1
+    chat-model: deepseek-v4-flash
+    user-agent: "claude-cli/2.0.0 (external, cli)"
+    simulated: false
