@@ -1,7 +1,9 @@
 # ⑤ AOP 实操——操作审计日志（谁、何时、改了什么）
 
-> **日期**：2026-10-11　**教材**：`@AuditLog`、`AuditAspect`、`AuditLogService`、`audit_log` 表
+> **日期**：2026-10-11　**教材**：[`@AuditLog`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)）、[`AuditAspect`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)）、[`AuditLogService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)）、`audit_log` 表
 > **前置**：J7（注解 + 反射）、J2（CGLIB 代理戏服）、J8（并发）｜**后续**：场景⑥（异步升级 Kafka）
+>
+> **文件链接说明**：`文件名` 为相对路径（本地 IDE Ctrl+Click 直达源码）；后缀 `网页版` 为绝对链接（部署到网页后可直接点击）。
 
 ## 1. 开课动机
 
@@ -26,7 +28,7 @@ ResearchTaskControlService：confirmPlan / pauseTask / resumeTask / cancelTask
 | # | 证据 | 说明 |
 |---|------|------|
 | 1 | `@Aspect` 全项目 **0 处** | 无任何 AOP 代码——又要"亲手造一件"（继 J7 自定义注解之后） |
-| 2 | `pom.xml` **无 `spring-boot-starter-aop`** | 连依赖都要新加 |
+| 2 | [`pom.xml`](../../backend/pom.xml)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/pom.xml)） **无 `spring-boot-starter-aop`** | 连依赖都要新加 |
 | 3 | schema 的 8 张表里**没有审计表** | 要新建**第 9 张表** `audit_log` |
 
 > 易混点厘清：`task_event_log` **不是**审计——它是"业务事件流"（任务发生了什么——给前端时间线看）；`audit_log` 是"责任审计流"（谁按的按钮——给排查/合规用）。**互补，不重复。**
@@ -75,7 +77,7 @@ public void pauseTask(UUID taskId) {
 
 | 术语 | 人话 | 本项目 |
 |------|------|--------|
-| **Aspect 切面** | "外包工"本体 | `AuditAspect` |
+| **Aspect 切面** | "外包工"本体 | [`AuditAspect`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)） |
 | **Pointcut 切点** | 下刀的选择标准 | "贴了 @AuditLog 的方法" |
 | **Advice 通知** | 刀法（什么时候动刀） | `@Around` 环绕 |
 | **JoinPoint 连接点** | 可下刀的位置（方法调用时刻） | 运行时传入——`proceed()` 放行 |
@@ -136,13 +138,13 @@ AuditLogService（真正写库——切面管"时机"、服务管"记录"）
 
 | 文件 | 角色 |
 |------|------|
-| `pom.xml` | + `spring-boot-starter-aop` |
-| `schema-dev.sql` | + 第 9 张表 `audit_log` + 2 索引 |
-| `shared/annotation/AuditLog.java`【新】 | ★ **申请书**（自定义注解） |
-| `infrastructure/aop/AuditAspect.java`【新】 | ★ **外包工**（@Around + proceed + 失败重抛 + 抓参） |
-| `application/service/AuditLogService.java`【新】 | 写库（REQUIRES_NEW + truncate + 日志观测窗） |
-| `AuditLogEntity / AuditResult / AuditLogRepository`【新】 | 数据三件套（append-only） |
-| 两个 Service | **5 个操作贴申请书**：CREATE_TASK / CONFIRM_PLAN / PAUSE_TASK / RESUME_TASK / CANCEL_TASK |
+| [`pom.xml`](../../backend/pom.xml)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/pom.xml)） | + `spring-boot-starter-aop` |
+| [`schema-dev.sql`](../../backend/src/main/resources/schema-dev.sql)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/schema-dev.sql)） | + 第 9 张表 `audit_log` + 2 索引 |
+| [`shared/annotation/AuditLog.java`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)）【新】 | ★ **申请书**（自定义注解） |
+| [`infrastructure/aop/AuditAspect.java`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/aop/AuditAspect.java)）【新】 | ★ **外包工**（@Around + proceed + 失败重抛 + 抓参） |
+| [`application/service/AuditLogService.java`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)）【新】 | 写库（REQUIRES_NEW + truncate + 日志观测窗） |
+| [`AuditLogEntity`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/persistence/entity/AuditLogEntity.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/persistence/entity/AuditLogEntity.java)） / [`AuditResult`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/enums/AuditResult.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/enums/AuditResult.java)） / [`AuditLogRepository`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/persistence/repository/AuditLogRepository.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/persistence/repository/AuditLogRepository.java)）【新】 | 数据三件套（append-only） |
+| [`ResearchTaskCommandService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskCommandService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskCommandService.java)） / [`ResearchTaskControlService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskControlService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchTaskControlService.java)） | **5 个操作贴申请书**：CREATE_TASK / CONFIRM_PLAN / PAUSE_TASK / RESUME_TASK / CANCEL_TASK |
 
 ## 7. 验证记录（2026-10-11，五幕全绿）
 
@@ -191,18 +193,18 @@ AuditLogService（真正写库——切面管"时机"、服务管"记录"）
 3. **审计独立事务**（`REQUIRES_NEW`）——业务回滚带不走；
 4. **切面永不吞异常**（记录完**必须重抛**）；
 5. **切面在事务外层**（`@Order(1)`——记录最终结局）；
-6. **扩展方向**：actor 接用户系统 → 查询接口/审计界面 → 存储可换（MQ/文件——只动 AuditLogService）。
+6. **扩展方向**：actor 接用户系统 → 查询接口/审计界面 → 存储可换（MQ/文件——只动 [`AuditLogService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/AuditLogService.java)））。
 
 ## 9. 复盘与关联地图
 
 | 今天的部件 | 哪课学过 |
 |-----------|---------|
-| `@AuditLog` 自定义注解（RUNTIME + METHOD） | J7（注释三件套） |
+| [`@AuditLog`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/annotation/AuditLog.java)） 自定义注解（RUNTIME + METHOD） | J7（注释三件套） |
 | 反射读标签 + 参数绑定 | J7（getAnnotation 的声明式升级） |
 | **代理（CGLIB 戏服）** | **J2**（`$$SpringCGLIB$$0`） |
 | `@Around` / `proceed()` 放行 | 本场景（切面语法） |
 | `REQUIRES_NEW` 独立事务 | 本场景（事务传播第一课——后续场景展开） |
-| 枚举 `AuditResult` / `@Enumerated(STRING)` | J6 |
+| 枚举 [`AuditResult`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/enums/AuditResult.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/enums/AuditResult.java)） / `@Enumerated(STRING)` | J6 |
 | 状态机拒绝（⑤ 的 400） | 场景②（守卫） |
 
 **场景在"并发/事务防线家族"里的位置**：

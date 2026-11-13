@@ -78,8 +78,8 @@ kafkaTemplate.send("research-task-execution", taskId.toString());   // 生产
 | `TaskExecutionProducer`【新】 | 下单台——`publish(taskId)`（key=taskId → 同分区有序） |
 | `TaskExecutionConsumer`【新】 | 工厂取单台——`@KafkaListener` → `executeTask(taskId)`（★ 守卫在它肚子里） |
 | `KafkaTopicConfiguration`【新】 | `NewTopic`（3 分区 + replicas=1） |
-| `pom.xml` | + `spring-kafka` |
-| `application.yml` | + `spring.kafka`（含 earliest + max.poll.interval.ms 护航） |
+| [`pom.xml`](../../backend/pom.xml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/pom.xml) | + `spring-kafka` |
+| [`application.yml`](../../backend/src/main/resources/application.yml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/application.yml) | + `spring.kafka`（含 earliest + max.poll.interval.ms 护航） |
 | `ResearchTaskOrchestrator` | ASYNC 分支：线程池提交 → **发消息** |
 
 ## 6. 验证记录（2026-10-11，全绿）

@@ -1,6 +1,6 @@
 # ⑦ 报告查询提速——Redis 缓存 + 失效策略 + 压测
 
-> **日期**：2026-10-11　**教材**：`CacheConfiguration`、`ResearchReportQueryService`、`ResearchReportAssemblyService`、`application.yml`
+> **日期**：2026-10-11　**教材**：[`CacheConfiguration`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/CacheConfiguration.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/CacheConfiguration.java)、[`ResearchReportQueryService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportQueryService.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportQueryService.java)、[`ResearchReportAssemblyService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportAssemblyService.java) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportAssemblyService.java)、[`application.yml`](../../backend/src/main/resources/application.yml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/application.yml)
 > **前置**：场景③（列表 SQL/索引）、④（幂等）、⑤（AOP/代理）｜**延伸**：G7（监控体系，按需衔接）
 > **★ 本篇定位**：实测环节连爆多层"壳坑"，本篇按 **教科书 + 排障实录** 双线书写，细节从全——**供反复查阅/补课用**。
 
@@ -102,11 +102,11 @@ public ResearchReportEntity buildReport(UUID taskId) { ... }
 | 文件 | 改动 | 角色 |
 |------|------|------|
 | `ResearchAgentApplication` | + `@EnableCaching` | 缓存总开关（外包工上岗证） |
-| `application.yml` | + `spring.cache.type=redis` | 声明 Redis 后端（★ 不写空壳节点——见 §11） |
+| [`application.yml`](../../backend/src/main/resources/application.yml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/resources/application.yml) | + `spring.cache.type=redis` | 声明 Redis 后端（★ 不写空壳节点——见 §11） |
 | `ResearchReportQueryService` | + `@Cacheable` | 读路径 |
 | `ResearchReportAssemblyService` | + `@CacheEvict` | 写路径失效 |
 | `CacheConfiguration`【新】 | RedisCacheConfiguration bean | ★ 值序列化（JSON）+ TTL 30 分钟接管 |
-| `pom.xml` | （无需新增——redis 依赖早已在） | —— |
+| [`pom.xml`](../../backend/pom.xml) [网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/pom.xml) | （无需新增——redis 依赖早已在） | —— |
 
 ## 7. 验证记录（2026-10-11，全绿）
 
