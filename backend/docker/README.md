@@ -115,6 +115,13 @@ Database 填了 `postgres`（PG 安装后自带的默认空库）**也能成功�
 
 > 最后那张 `flyway_schema_history` 是 Flyway 的迁移账本——能看到 V1–V4 每条迁移的执行记录与耗时，排查"表结构为什么是这样"先查它。
 
+### 命令行替代（psql）
+
+```powershell
+docker exec -it research-postgres psql -U postgres -d research_agent
+# 常用：\dt 看表、\d research_task 看列、SELECT ... 查数据、\q 退出
+```
+
 ## 缓存查看：Redis
 
 ```powershell
@@ -164,13 +171,6 @@ docker exec research-redis redis-cli TTL "report::<taskId>"
 - 任意一侧执行 `CLIENT LIST`：能看到应用的连接条目才说明缓存写在这里
 - 统一到 Docker（推荐）：管理员 PowerShell 执行 `sc stop Redis` + `sc config Redis start= disabled`
 - 暂不处理时：查缓存请用 `127.0.0.1:6379`（Windows 实例），`docker exec` 只反映容器内实例
-
-### 命令行替代
-
-```powershell
-docker exec -it research-postgres psql -U postgres -d research_agent
-# 常用：\dt 看表、\d research_task 看列、SELECT ... 查数据、\q 退出
-```
 
 ## 端口约定（与主配置默认值对齐）
 
