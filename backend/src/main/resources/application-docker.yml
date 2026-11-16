@@ -1,0 +1,41 @@
+# ============================================================
+# docker profile —— Docker 专属运行环境的配置覆盖
+#（OpenSpec 变更 add-docker-runtime-environment，2026-11-14）
+#
+# 定位：配合 backend/docker/docker-compose.yml 使用，跑在 compose
+#      内部网络里，所有中间件一律用「容器服务名」寻址。
+#
+# 原则：本文件只做「地址覆盖」——业务配置全部继承主配置
+#      application.yml（PG + Flyway + Nacos 占位符体系），
+#      不复制任何业务键，避免两处维护。
+#
+# 激活方式：compose 中 backend 服务注入
+#      SPRING_PROFILES_ACTIVE=docker（覆盖镜像默认的 dev）。
+#
+# 与 dev 环境的分工：dev（H2，本地 mvn）负责日常改码调试；
+#      docker（PG，容器化）负责完整链路验证与生产形态预演。
+# ============================================================
+spring:
+  datasource:
+    # PG 容器服务名 postgres；用户名/密码沿用主配置默认值（postgres/postgres），
+    # 与 compose 的 POSTGRES_USER / POSTGRES_PASSWORD 保持一致
+    url: jdbc:postgresql://postgres:5432/research_agent
+
+  data:
+    redis:
+      # Redis 容器服务名；端口/密码沿用主配置默认值（6379 / 无密码）
+      host: redis
+
+  kafka:
+    # Kafka 容器服务名（KRaft 单节点）
+    bootstrap-servers: kafka:9092
+
+  cloud:
+    nacos:
+      # 本地 Docker Nacos —— 与虚拟机 K8s 的 Nacos 是两套完全隔离的注册中心：
+      #   Docker 环境的 backend 注册到这里的 nacos:8848；
+      #   虚拟机集群（micro-lab 等）仍注册到 129:30048，互不干扰
+      discovery:
+        server-addr: nacos:8848
+      config:
+        server-addr: nacos:8848

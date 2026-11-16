@@ -1,0 +1,68 @@
+# ============================================================
+# dev-docker profile —— 本地 mvn 调试专用（完全独立，不叠加 dev）
+#（OpenSpec 变更 add-docker-runtime-environment，2026-11-16）
+#
+# 定位：本地 mvn 进程直连 Docker 中间件栈（compose 暴露的 localhost 端口）
+#       —— 全量独立配置，与 dev（H2 老模式）彻底分开，互不影响。
+#
+# 激活：backend/start-dev-docker.ps1 注入 SPRING_PROFILES_ACTIVE=dev-docker
+#
+# 与 dev 的差异清单：
+#   数据源：H2 文件 → Docker PostgreSQL（表已由容器 backend 的 Flyway 建好）
+#   sql.init：always（schema-dev.sql）→ never（表已存在，重复执行无意义）
+#   nacos：虚拟机 129:30048 → 本地 Docker Nacos（注册/配置同源）
+#   h2 console：无 H2，移除
+#
+# 继承自主配置 application.yml（本文件不重复）：
+#   Redis localhost:6379 / Kafka localhost:9092 / langchain4j / swagger / 日志级别等
+#
+# ★ Nacos 地址的双重保障（缺一不可，compose 实测踩坑）：
+#   ① 本文件 server-addr: localhost:8848 —— 覆盖 discovery/config 的运行期寻址
+#   ② start-dev-docker.ps1 注入 NACOS_ADDR 环境变量 ——
+#      spring.config.import 的解析发生在 profile 覆盖生效之前，
+#      profile 盖不住它，必须靠 env（实测：只配 profile 时 config 仍连虚拟机 129）
+# ============================================================
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/research_agent
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 表结构由容器 backend 的 Flyway（V1-V4）统一管理，本地 mvn 不动结构
+      ddl-auto: none
+
+  flyway:
+    # 容器 backend 已执行迁移（flyway_schema_history 已记录 V1-V4），
+    # 本地 mvn 连接时 Flyway 校验"已在 V4"直接跳过——保持关闭与 dev 一致
+    enabled: false
+
+  sql:
+    init:
+      # 表已由 Flyway 建好，不需要 schema-dev.sql 重复初始化
+      mode: never
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+  cloud:
+    nacos:
+      discovery:
+        # 本地 Docker Nacos（compose 暴露 8848 + 9848gRPC）
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+
+# 持久化实现：mybatis（覆盖主配置默认的 jpa）
+#   —— dev-docker 模式下用 MyBatis 手写 SQL 调试（mapper 见 resources/mapper/）
+#   切换回 jpa 只需改这一行或设 APP_PERSISTENCE_MODE=jpa
+app:
+  persistence:
+    mode: mybatis

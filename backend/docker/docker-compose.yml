@@ -1,0 +1,176 @@
+# ============================================================
+# research-agent Docker 专属运行环境（全栈编排）
+#（OpenSpec 变更 add-docker-runtime-environment，2026-11-14）
+#
+# 定位：一条命令拉起「中间件全家桶 + 应用」的完整环境，
+#      与本地 dev 环境（mvn + H2）、虚拟机 K8s 集群三环境并存。
+#
+# 启动：cd backend/docker && docker compose up -d --build
+# 停止：docker compose down           （数据保留）
+# 重建：docker compose down -v        （数据全清，Flyway 重新建表）
+#
+# 镜像统一走 DaoCloud 加速源（与 backend/Dockerfile 惯例一致）；
+# 若本机代理稳定可拉官方源，可自行去掉前缀。
+# ============================================================
+name: research-agent-docker
+
+services:
+
+  # ------------------------------------------------------------
+  # Nacos —— 本地 Docker 独立注册中心/配置中心
+  #（与虚拟机 K8s 的 Nacos 完全隔离：本环境的 backend 注册到 nacos:8848，
+  #  集群栈的 micro-lab 等仍注册到 129:30048，互不干扰）
+  #  9848 是 Nacos 2.x 的 gRPC 端口（主端口 +1000），
+  #  micro-lab 实测踩过"不映射就注册失败"的坑，必须显式映射
+  # ------------------------------------------------------------
+  nacos:
+    # 镜像说明：DaoCloud 镜像站对不存在的 tag 返回 denied（v2.3.3 实际不存在），
+    #           官方真实稳定 tag 为 v2.3.2；经 registry-1.docker.io 直拉验证可用
+    image: nacos/nacos-server:v2.3.2
+    container_name: research-nacos
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      # standalone 模式用内嵌 Derby 存储，零外部依赖（学习环境友好）
+      MODE: standalone
+      # JVM 内存收敛，避免与全家桶其他容器抢内存
+      NACOS_JVM_XMS: 256m
+      NACOS_JVM_XMX: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8848/nacos -o /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ------------------------------------------------------------
+  # PostgreSQL —— docker 环境的正式数据源（主配置 PG + Flyway 默认形态）
+  #  首次启动由 Flyway 自动建表（application.yml: flyway.enabled=true）
+  # ------------------------------------------------------------
+  postgres:
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    container_name: research-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      # 与 application.yml 的 DB_USERNAME/DB_PASSWORD 默认值保持一致
+      POSTGRES_DB: research_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d research_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ------------------------------------------------------------
+  # Redis —— 场景⑦缓存后端（无密码，与主配置默认一致）
+  #  缓存数据无需持久化：down 后清空即"缓存失效"，业务自动回源重建
+  # ------------------------------------------------------------
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    container_name: research-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ------------------------------------------------------------
+  # Kafka —— KRaft 单节点（无 ZooKeeper），双监听器保证两端各自可达：
+  #   PLAINTEXT  kafka:9092     ← compose 网络内的 backend（application-docker.yml 用这个）
+  #   EXTERNAL   localhost:9092  ← 宿主机调试工具（端口映射 9092 → 容器 9094）
+  #  广播地址互不串扰，避免"容器内拿到 localhost 广播连回自己"的经典坑
+  #  镜像说明：原计划 bitnami/kafka 被 DaoCloud 拒绝（Bitnami 限制第三方镜像站），
+  #           改用官方 apache/kafka:3.9.0（本机场景⑥遗留镜像，零下载）
+  #           —— 官方镜像环境变量为 KAFKA_* 前缀（对应 server.properties 的点号键）
+  # ------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: research-kafka
+    ports:
+      - "9092:9094"
+    environment:
+      # ---- KRaft 单节点三要素 ----
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # ---- 双监听器 ----
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # 学习环境友好：应用用到的 topic 允许自动创建
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # 单节点必备：内部主题副本数与最小 ISR 都只能是 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 数据目录与下方卷挂载对齐
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # ------------------------------------------------------------
+  # backend —— 应用本体（复用仓库根的多阶段 Dockerfile，零改动）
+  #  compose 的 SPRING_PROFILES_ACTIVE 覆盖镜像默认 dev（Docker 标准优先级），
+  #  激活 application-docker.yml → 按容器服务名寻址全部中间件
+  # ------------------------------------------------------------
+  backend:
+    build:
+      # 构建上下文 = backend 目录（Dockerfile 的 COPY 相对路径以它为基准）
+      context: ..
+      dockerfile: Dockerfile
+    container_name: research-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # ★ Nacos 地址必须用环境变量注入而不能只靠 docker profile：
+      #   spring.config.import 的解析发生在 profile 覆盖生效之前，
+      #   profile 文件盖不住它（实测 2026-11-14：只配 profile 时 config 客户端
+      #   仍按主配置默认值订阅虚拟机 129:30048）。
+      #   env 优先级高于一切配置文件，config.import 阶段即生效——
+      #   这正是主配置 NACOS_ADDR 占位符 + K8s 集群 env 注入的同款机制。
+      NACOS_ADDR: nacos:8848
+      # 从 backend/docker/.env 读取（模板见 .env.example，真实值不入 git）
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  # ------------------------------------------------------------
+  # Adminer —— 轻量级数据库 Web 控制台（"H2 console 的 PG 版"）
+  #  挂在 tools profile 下：默认 up 不启动、不占资源，需要时显式拉起：
+  #    docker compose --profile tools up -d
+  #  访问 http://localhost:8081
+  #    系统 PostgreSQL / 服务器 postgres / 用户 postgres
+  #    密码   postgres / 数据库 research_agent
+  # ------------------------------------------------------------
+  adminer:
+    image: docker.m.daocloud.io/library/adminer:latest
+    container_name: research-adminer
+    profiles:
+      - tools
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg-data:
+  kafka-data:

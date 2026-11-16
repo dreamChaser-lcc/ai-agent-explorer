@@ -32,6 +32,9 @@ coverage/
 # tsc 增量编译缓存（npx tsc 生成，勿入库）
 *.tsbuildinfo
 
+# Docker 环境敏感值（真实 API Key 只存在于本地 .env，模板见 .env.example）
+backend/docker/.env
+
 # Spring Boot / Maven
 target/
 *.class
