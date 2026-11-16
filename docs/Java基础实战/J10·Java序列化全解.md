@@ -1,7 +1,7 @@
 # J10 · Java 序列化全解（机制 · 格式 · 场景选型）
 
 > **定位**：把散落在 Redis 08 / 场景⑦⑨ / J2（代理）/ J7（反射）里的"序列化"知识收拢成一篇——讲清**什么是序列化、Java 有哪些序列化方式、二进制是怎么"编"出来的、什么场景选什么格式**。
-> **前置**：J2（接口与多态 / CGLIB 代理）、J7（注解 + 反射）｜**强关联**：[Redis 08·Spring实战整合](../Redis实战/08·Spring实战整合——初学者实战篇.md)（§4 序列化与 §4.5 深挖）
+> **前置**：J2（接口与多态 / CGLIB 代理）、J7（注解 + 反射）｜**强关联**：[Redis 08·Spring实战整合](../Redis实战/08·Spring实战整合.md)（§4 序列化与 §4.5 深挖）
 > **建立**：2026-11-13
 
 ---
@@ -284,8 +284,8 @@ Jackson 2.12+ 原生支持 record：**按构造器参数名匹配 JSON 字段**�
 | `@Cacheable` / `@CacheEvict` | [`ResearchReportQueryService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportQueryService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportQueryService.java)） / [`ResearchReportAssemblyService`](../../backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportAssemblyService.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/application/service/ResearchReportAssemblyService.java)） |
 | Redis Key 规范 | [`RedisConstant`](../../backend/src/main/java/com/aiexplorer/researchagent/shared/constant/RedisConstant.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/shared/constant/RedisConstant.java)） |
 | 分布式锁（token = String 值） | [`DistributedTaskLock`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/lock/DistributedTaskLock.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/lock/DistributedTaskLock.java)） |
-| 序列化深挖（会丢什么） | Redis 08 文档 §4.5（[本目录关联](../Redis实战/08·Spring实战整合——初学者实战篇.md)） |
-| 锁原理 / 缓存实战 | [Redis 08·Spring实战整合——初学者实战篇](../Redis实战/08·Spring实战整合——初学者实战篇.md) |
+| 序列化深挖（会丢什么） | Redis 08 文档 §4.5（[本目录关联](../Redis实战/08·Spring实战整合.md)） |
+| 锁原理 / 缓存实战 | [Redis 08·Spring实战整合](../Redis实战/08·Spring实战整合.md) |
 | 代理（为什么注解能生效） | J2 §12 / §20（[J2·接口与多态.md](J2·接口与多态.md)） |
 | 注解与反射 | J7（[J7·注解体系.md](J7·注解体系.md)） |
 
