@@ -287,6 +287,155 @@ Long count = redisTemplate.execute(INCR_WITH_EXPIRE_SCRIPT,
 
 如果脚本里第二个 `redis.call` 报错，第一个的效果同样保留。Lua 解决的不是"回滚"，而是"**在同一个原子块里完成判断 + 多次写入**"。
 
+### 7.1 实战：秒杀扣库存（"读-判断-写"三件套）
+
+**场景**：库存只剩 1 件，两个人同时下单。如果拆成三次往返 Redis：
+
+```text
+请求 A: GET stock → 1
+请求 B: GET stock → 1              ← 两个请求都看到"还有 1 件"
+请求 A: 判断 1 >= 1 → DECRBY → 0
+请求 B: 判断 1 >= 1 → DECRBY → -1   ← 超卖！
+```
+
+Lua 把三步收进一个原子块（`backend/src/main/resources/lua/deduct_stock.lua`）：
+
+```lua
+local stockKey = KEYS[1]
+local deductQuantity = tonumber(ARGV[1])
+
+local currentStock = tonumber(redis.call('GET', stockKey))
+if currentStock == nil then
+    return -1                                              -- 库存未初始化
+end
+if currentStock < deductQuantity then
+    return -2                                              -- 库存不足
+end
+return redis.call('DECRBY', stockKey, deductQuantity)      -- 扣减并返回剩余库存
+```
+
+Java 侧只需一行（`RedisLuaScriptController`）：
+
+```java
+Long result = redisTemplate.execute(deductStockScript, List.of(key), String.valueOf(quantity));
+```
+
+**实测结果（本项目跑出来的）**：
+
+| 测试 | 结果 |
+|---|---|
+| 库存 3，连续扣 4 次 | 剩余 2 → 1 → 0，第 4 次返回 `-2`（库存不足） |
+| 库存 5，**10 个并发扣减** | 成功 **5** 次、失败 **5** 次（全 `OUT_OF_STOCK`），最终库存 **0**，**零超卖** |
+
+> 端点：`POST /api/redis-lua/stock/init`、`POST /api/redis-lua/stock/deduct`（`dev` / `dev-docker` profile）
+
+### 7.2 脚本怎么组织：内嵌字符串 vs 独立 `.lua` 文件
+
+上面的脚本我写了两种放法，实际项目里两者并存：
+
+| | 内嵌字符串 | 独立 `.lua` 文件 |
+|---|---|---|
+| 可读性 | 差（拼字符串、无语法高亮） | 好（高亮 + 可 lint） |
+| 可否单独测试 | ❌ 只能通过应用调用 | ✅ `redis-cli --eval` 直接跑 |
+| 复用 | 只能在定义它的类里 | ✅ 多服务、多模块共享 |
+| 改动成本 | 改一行要重新编译打包 | 改资源文件即可（多数情况） |
+| Code Review | 夹在 Java 代码里容易漏看 | ✅ 可单独 diff |
+| 适合 | **3~5 行的极短脚本** | **10 行以上、含分支逻辑、多处复用** |
+
+**目录约定**：
+
+```text
+backend/src/main/resources/
+└── lua/
+    ├── deduct_stock.lua
+    └── （以后：rate_limit.lua、unlock.lua ……）
+```
+
+**加载方式**（Spring Data Redis 原生支持，无需额外依赖）：
+
+```java
+@Configuration
+@Profile({"dev", "dev-docker"})
+public class RedisScriptConfig {
+
+    @Bean
+    public RedisScript<Long> deductStockScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/deduct_stock.lua"));
+        script.setResultType(Long.class);   // 决定 Lua number → Java Long
+        return script;
+    }
+}
+```
+
+**本项目两种写法并存（正好对照）**：
+
+| 端点 | 脚本来源 | 规模 |
+|---|---|---|
+| `POST /api/redis-playground/sms/send-daily-limited` | 内嵌 `INCREMENT_WITH_DAILY_TTL_SCRIPT` | 3 行 |
+| `POST /api/redis-lua/stock/deduct` | `classpath:lua/deduct_stock.lua` | 10 行 + 注释 |
+
+**文件版最大好处：能脱离应用调试**
+
+```bash
+redis-cli --eval lua/deduct_stock.lua demo:stock:p9 , 2
+#                                  ↑ KEYS        ↑ 逗号   ↑ ARGV
+```
+
+### 7.3 Lua 最小语法（前端视角速查）
+
+Redis 脚本用到的 Lua 只有一小部分，够用就行：
+
+| Lua 写法 | 含义 | 前端对应物 |
+|---|---|---|
+| `local x = 1` | 声明局部变量 | `const x = 1` |
+| 不加 `local` | 变成全局变量（污染脚本环境） | 不加 `var/let` 的隐式全局 |
+| `tonumber(x)` | 转数字 | `Number(x)` |
+| `tostring(x)` | 转字符串 | `String(x)` |
+| `redis.call('GET', k)` | 执行一条 Redis 命令 | 同步版 `await redis.get(k)` |
+| `redis.pcall(...)` | 同上，但捕获错误不中断脚本 | `try/catch` |
+| `nil` | 空值 | `null` / `undefined` |
+| `~=` / `==` | 不等于 / 等于（不做类型转换） | `!==` / `===` |
+| `#t` | 取表长度 | `arr.length` |
+| `..` | 字符串拼接 | `+` |
+| `--` / `--[[ ]]` | 单行 / 多行注释 | `//` / `/* */` |
+
+**三个必须记住的差异**：
+
+1. **数组下标从 1 开始**——`KEYS[1]` 才是第一个 key，写 `KEYS[0]` 得到 `nil`
+2. **只有一种复合类型 `table`**——数组、对象、队列全是它
+3. **没有 `null`，只有 `nil`**
+
+**返回值怎么映射到 Java**（决定 `setResultType`）：
+
+| Lua 返回 | Redis 协议类型 | Java 侧（`setResultType`） |
+|---|---|---|
+| `return 3` | integer | `Long 3` |
+| `return "ok"` | bulk string | `String "ok"` |
+| `return {1, 2}` | array | `List<Long>` |
+| `return false` / `return nil` | nil | `null` |
+
+### 7.4 去哪学 Lua（省时间版）
+
+| 资源 | 地址 | 用途 |
+|---|---|---|
+| Redis 官方脚本入门 | `redis.io/docs/latest/develop/programmability/eval-intro/` | 权威：KEYS/ARGV 约定、原子性、集群限制 |
+| `EVAL` 命令文档 | `redis.io/docs/latest/commands/eval/` | 返回值映射、超时、`SCRIPT KILL` |
+| Programming in Lua（第 1 版，免费在线） | `lua.org/pil/` | Lua 作者写的，公认最好的教程 |
+| Lua 5.1 手册 | `lua.org/manual/5.1/` | **Redis 内置的就是 Lua 5.1**，语法以它为准 |
+| 菜鸟教程 Lua（中文） | `runoob.com/lua/lua-tutorial.html` | 中文快速入门，2 小时能过一遍 |
+| Spring Data Redis 脚本章节 | `docs.spring.io/spring-data/redis/reference/redis/scripting.html` | `DefaultRedisScript` / `RedisScript` 官方用法 |
+
+**只学这 5 点就够用**：
+
+1. `local` 变量 + `if/for` 控制流
+2. `table`（数组从 1 开始）
+3. `redis.call` 与 `redis.pcall` 的区别
+4. `KEYS[n]` / `ARGV[n]` 约定 + 返回值类型映射
+5. 原子性边界：单线程执行、`lua-time-limit` 默认 5 秒，超时其他客户端收到 `BUSY`
+
+**不用学**：元表、协程、GC 调优——Redis 脚本场景基本用不上。
+
 ---
 
 ## 8. 选型决策表
