@@ -51,8 +51,17 @@ if ($lines) {
     Start-Sleep -Seconds 2
 }
 
-# 中间件四件套拉起（up 输出保留可见：失败时用户能当场看到原因）
-docker compose -f "docker\docker-compose.yml" up -d nacos postgres redis kafka 2>&1
+# 中间件四件套拉起
+# 注意：docker compose 的状态信息走 stderr（Docker CLI 惯例），
+# PowerShell 会把原生命令的 stderr 包装成 NativeCommandError 显示成红字，
+# 因此这里先捕获输出、只在失败时完整打印，成功时只给一行摘要。
+$composeOutput = docker compose -f "docker\docker-compose.yml" up -d nacos postgres redis kafka 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) {
+    Write-Host $composeOutput -ForegroundColor Red
+    Write-Host "✗ 中间件栈启动失败（见上方 docker 输出）" -ForegroundColor Red
+    exit 1
+}
+Write-Host "      中间件栈已就绪（nacos / postgres / redis / kafka）" -ForegroundColor Green
 
 # 等待关键端口就绪（最多 30 秒；Docker 端口转发就绪有延迟属正常）
 $targetPorts = 5432, 6379, 9092, 8848

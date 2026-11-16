@@ -17,13 +17,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 场景⑩ 教学入口（仅 dev）：手动触发清理、查看表规模、造"过期数据"。
- * 生产环境不注册（@Profile("dev")）。
+ * 场景⑩ 教学入口（仅 dev / dev-docker）：手动触发清理、查看表规模、造"过期数据"。
+ * 生产环境不注册（通过 @Profile 白名单控制）。
  */
 @RestController
 @RequestMapping("/api/admin/cleanup")
-@Profile("dev")
-@Tag(name = "数据清理（教学）", description = "手动清理 / 表规模 / 造过期数据；仅 dev 注册")
+@Profile({"dev", "dev-docker"})
+@Tag(name = "数据清理（教学）", description = "手动清理 / 表规模 / 造过期数据；仅 dev / dev-docker 注册")
 public class AdminCleanupController {
 
     private final RetentionCleanupService cleanupService;

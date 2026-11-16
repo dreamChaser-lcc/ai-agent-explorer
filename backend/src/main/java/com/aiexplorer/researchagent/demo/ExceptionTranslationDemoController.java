@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/demo/translate")
-@Profile("dev")
+@Profile({"dev", "dev-docker"})
 @Tag(name = "异常翻译演示（教学）", description = "对照 @Repository 有无时，异常类型与 HTTP 状态的差异")
 public class ExceptionTranslationDemoController {
 

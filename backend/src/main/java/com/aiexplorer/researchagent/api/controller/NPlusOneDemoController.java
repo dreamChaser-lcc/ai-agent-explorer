@@ -28,8 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/sp11")
-@Profile("dev")
-@Tag(name = "N+1 演示（教学）", description = "对照 N+1 查询与一条 JOIN 的 SQL 条数；仅 dev 注册")
+@Profile({"dev", "dev-docker"})
+@Tag(name = "N+1 演示（教学）", description = "对照 N+1 查询与一条 JOIN 的 SQL 条数；仅 dev / dev-docker 注册")
 public class NPlusOneDemoController {
 
     private final ResearchTaskRepository taskRepository;
