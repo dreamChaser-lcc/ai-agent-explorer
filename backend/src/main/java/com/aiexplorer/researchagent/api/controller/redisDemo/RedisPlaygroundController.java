@@ -1,12 +1,20 @@
 package com.aiexplorer.researchagent.api.controller.redisDemo;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -252,6 +260,129 @@ public class RedisPlaygroundController {
                 "message", "验证码已发送（5 分钟内有效）",
                 "todayCount", String.valueOf(todayCount),
                 "remainingQuota", String.valueOf(dailyLimit - todayCount));
+    }
+
+    /* ==================== 广播型：Pub/Sub（喊话）与 Streams（信箱） ==================== */
+
+    /** Streams 演示用的流 key */
+    private static final String STREAM_KEY = "demo:stream:events";
+
+    /**
+     * Pub/Sub 发布一条消息。
+     *
+     * <p>★ 返回值里的 {@code subscribers} 来自 PUBLISH 命令返回的"接收者数量"：
+     * 0 表示发布当下没有订阅者在线，这条消息**直接被丢弃**（Pub/Sub 不存储消息）。</p>
+     */
+    @PostMapping("/broadcast/publish")
+    public Map<String, Object> broadcastPublish(@RequestParam(defaultValue = "hello redis") String message) {
+        Long subscriberCount = redisTemplate.execute((RedisCallback<Long>) connection ->
+                connection.publish(RedisBroadcastDemoConfig.BROADCAST_CHANNEL.getBytes(StandardCharsets.UTF_8),
+                        message.getBytes(StandardCharsets.UTF_8)));
+
+        long subscribers = subscriberCount == null ? 0L : subscriberCount;
+        return Map.of("channel", RedisBroadcastDemoConfig.BROADCAST_CHANNEL,
+                "message", message,
+                "subscribers", String.valueOf(subscribers),
+                "tip", subscribers > 0
+                        ? "已推送给 " + subscribers + " 个在线订阅者，可调 GET /broadcast/received 查看本实例收到的内容"
+                        : "发布当下没有订阅者在线——Pub/Sub 不存储消息，这条已经被丢弃");
+    }
+
+    /** 查看本实例通过订阅收到的消息（内存缓冲，重启即清空——也说明 Pub/Sub 不持久化） */
+    @GetMapping("/broadcast/received")
+    public Map<String, Object> broadcastReceived() {
+        List<String> messages = RedisBroadcastDemoConfig.snapshotReceivedMessages();
+        return Map.of("channel", RedisBroadcastDemoConfig.BROADCAST_CHANNEL,
+                "count", String.valueOf(messages.size()),
+                "messages", messages.isEmpty()
+                        ? List.of("（还没有收到消息，先调 POST /broadcast/publish）")
+                        : messages);
+    }
+
+    /**
+     * Streams 追加一条消息（XADD）——与 Pub/Sub 的关键差别：消息**持久保存在流里**。
+     */
+    @PostMapping("/broadcast/stream/send")
+    public Map<String, Object> streamSend(@RequestParam String message) {
+        RecordId recordId = redisTemplate.opsForStream().add(
+                StreamRecords.newRecord()
+                        .ofMap(Map.of("message", message, "source", "playground"))
+                        .withStreamKey(STREAM_KEY));
+        return Map.of("stream", STREAM_KEY,
+                "recordId", String.valueOf(recordId),
+                "message", message,
+                "tip", "消息已持久化，随时可以用 GET /broadcast/stream/latest 补读");
+    }
+
+    /** 读取流里最新的 N 条消息（离线也能读——这是 Pub/Sub 做不到的） */
+    @GetMapping("/broadcast/stream/latest")
+    public Map<String, Object> streamLatest(@RequestParam(defaultValue = "5") long count) {
+        List<MapRecord<String, Object, Object>> records =
+                redisTemplate.opsForStream().range(STREAM_KEY, Range.unbounded());
+        int total = records == null ? 0 : records.size();
+        List<String> latest = records == null ? List.of() : records.stream()
+                .skip(Math.max(0L, total - count))
+                .map(record -> record.getId() + "  " + record.getValue())
+                .toList();
+        return Map.of("stream", STREAM_KEY,
+                "totalInStream", String.valueOf(total),
+                "latest", latest.isEmpty()
+                        ? List.of("（流里还没有消息，先调 POST /broadcast/stream/send）")
+                        : latest);
+    }
+
+    /* ==================== 计算型：四种"边存边算" ==================== */
+
+    /** ① INCR 计数器：比"GET 出来 +1 再 SET 回去"安全（原子，不会丢失更新） */
+    @GetMapping("/calc/pageview")
+    public Map<String, Object> pageView(@RequestParam(defaultValue = "home") String page) {
+        Long views = redisTemplate.opsForValue().increment("demo:calc:pageview:" + page);
+        return Map.of("page", page,
+                "views", String.valueOf(views),
+                "storageType", "String（INCR）");
+    }
+
+    /** ② ZSet 排行榜：ZINCRBY 累加分数、ZREVRANGE 取 Top N（底层跳表，O(log N)） */
+    @GetMapping("/calc/hotkeyword")
+    public Map<String, Object> hotKeyword(@RequestParam String keyword) {
+        String rankKey = "demo:calc:hotkeyword";
+        redisTemplate.opsForZSet().incrementScore(rankKey, keyword, 1);
+        Set<ZSetOperations.TypedTuple<String>> top =
+                redisTemplate.opsForZSet().reverseRangeWithScores(rankKey, 0, 4);
+        List<String> board = top == null ? List.of() : top.stream()
+                .map(tuple -> {
+                    Double score = tuple.getScore();
+                    return tuple.getValue() + " : " + (score == null ? 0 : score.intValue());
+                })
+                .toList();
+        return Map.of("keyword", keyword,
+                "top5", board.isEmpty() ? List.of("（暂无数据）") : board,
+                "storageType", "ZSet（跳表 + 分值排序）");
+    }
+
+    /** ③ HyperLogLog 去重计数：不存原始元素、只估基数，固定约 12KB，误差约 0.81% */
+    @GetMapping("/calc/uv")
+    public Map<String, Object> uniqueVisitor(@RequestParam String userId) {
+        String uvKey = "demo:calc:uv:today";
+        redisTemplate.opsForHyperLogLog().add(uvKey, userId);
+        Long estimatedUv = redisTemplate.opsForHyperLogLog().size(uvKey);
+        return Map.of("userId", userId,
+                "estimatedUv", String.valueOf(estimatedUv),
+                "storageType", "HyperLogLog（概率算法，不存元素）");
+    }
+
+    /** ④ Bitmap 位图：一个 bit 表示"某天有没有打卡"，1 亿用户的签到只占约 12MB */
+    @GetMapping("/calc/checkin")
+    public Map<String, Object> checkIn(@RequestParam String userId,
+                                       @RequestParam(defaultValue = "3") long dayOfWeek) {
+        String bitmapKey = "demo:calc:checkin:" + userId;
+        redisTemplate.opsForValue().setBit(bitmapKey, dayOfWeek, true);
+        Long checkedDays = redisTemplate.execute((RedisCallback<Long>) connection ->
+                connection.bitCount(bitmapKey.getBytes(StandardCharsets.UTF_8)));
+        return Map.of("userId", userId,
+                "dayOfWeek", String.valueOf(dayOfWeek),
+                "checkedDays", String.valueOf(checkedDays),
+                "storageType", "Bitmap（SETBIT / GETBIT / BITCOUNT）");
     }
 
     /**
