@@ -115,6 +115,56 @@ Database 填了 `postgres`（PG 安装后自带的默认空库）**也能成功�
 
 > 最后那张 `flyway_schema_history` 是 Flyway 的迁移账本——能看到 V1–V4 每条迁移的执行记录与耗时，排查"表结构为什么是这样"先查它。
 
+## 缓存查看：Redis
+
+```powershell
+# 进入交互式终端（exit 或 Ctrl+D 退出；Docker Desktop 里也可用容器的 Exec 标签执行 redis-cli）
+docker exec -it research-redis redis-cli
+```
+
+进去后的常用命令：
+
+| 目的 | 命令 | 说明 |
+|---|---|---|
+| key 总数 | `DBSIZE` | 当前 db 的 key 数量 |
+| 列出全部 key | `KEYS *` | 学习环境够用；**生产禁用**（O(N)，会阻塞） |
+| 安全遍历 | `SCAN 0 COUNT 100` | 游标迭代，生产推荐 |
+| 过期时间 | `TTL report::xxx` | 剩余秒数；`-1` 永不过期，`-2` 已不存在 |
+| 数据类型 | `TYPE report::xxx` | string / hash / list / set / zset |
+| 看值 | `GET report::xxx`（string）、`HGETALL`（hash）、`LRANGE key 0 -1`（list） | 按 TYPE 选读法 |
+| 各 db 概览 | `INFO keyspace` | 每个 db 的 key 数与带过期数的 key 数 |
+| 单 key 内存 | `MEMORY USAGE report::xxx` | 字节数 |
+| 谁在连接 | `CLIENT LIST` | 判断应用是否真的连到**这个**实例 |
+| 实时命令流 | `MONITOR` | 调试完 `Ctrl+C`；生产禁用 |
+
+不进交互的一次性查询：
+
+```powershell
+docker exec research-redis redis-cli KEYS "*"
+docker exec research-redis redis-cli DBSIZE
+docker exec research-redis redis-cli TTL "report::<taskId>"
+```
+
+### 项目里的缓存 key 长什么样
+
+| key 形态 | 来源 | 典型 TTL |
+|---|---|---|
+| `report::<taskId>` | 场景⑦ 报告查询缓存（Spring Cache） | 30 分钟 |
+| `lock:cleanup` | 场景⑩ 分布式锁 | 按业务设定 |
+| `demo:*` | 教学演示（`/api/redis-playground/**`，dev / dev-docker 生效） | 5~10 分钟 |
+
+> 教学演示端点每访问一次就生成一批 `demo:*` 数据，配合 `KEYS demo:*` 可以直观看到 String / Hash / List / Set / ZSet 五种结构在 Redis 里的真实形态。
+
+### ⚠️ 两个 Redis 实例的坑（查不到缓存时先看这里）
+
+本机若仍运行 **Windows 服务版 Redis**（占 `127.0.0.1:6379`），本地 mvn（dev-docker 模式）连 `localhost:6379` 时会命中它，而不是 Docker 的 `research-redis`——此时在 Docker 里查是空的，缓存其实在 Windows Redis 那边。
+
+判断与处理：
+
+- 任意一侧执行 `CLIENT LIST`：能看到应用的连接条目才说明缓存写在这里
+- 统一到 Docker（推荐）：管理员 PowerShell 执行 `sc stop Redis` + `sc config Redis start= disabled`
+- 暂不处理时：查缓存请用 `127.0.0.1:6379`（Windows 实例），`docker exec` 只反映容器内实例
+
 ### 命令行替代
 
 ```powershell
