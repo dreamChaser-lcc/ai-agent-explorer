@@ -59,14 +59,16 @@ redisTemplate.opsForValue().set("demo:captcha:" + phone, smsCode, Duration.ofMin
 
 | 步骤 | 做什么 | 用什么 | 现状 |
 |---|---|---|---|
-| ① 发送限流 | 同手机号 **60 秒内只能发一次** | `SET key 1 EX 60 NX` | demo 缺 |
-| ② 每日上限 | 一个号码一天最多 N 条 | `INCR` + 条件 `EXPIRE` | demo 缺 |
+| ① 发送限流 | 同手机号 **60 秒内只能发一次** | `SET key 1 EX 60 NX` | ✅ 已实现 `/sms/send-guarded` |
+| ② 每日上限 | 一个号码一天最多 N 条 | `INCR` + 条件 `EXPIRE` | ✅ 已实现 `/sms/send-daily-limited` |
 | ③ 安全随机 | 用 `SecureRandom`，不用 `Math.random()` | `Math.random()` 可预测，安全场景禁用 | demo 用的是后者 |
 | ④ 覆盖写入 | 新码覆盖旧码，TTL 5 分钟 | `SET` + `Duration` | ✅ 已有 |
 | ⑤ 不返回验证码 | **生产环境绝不把 code 放进响应** | demo 的 `devCode` 字段仅在 dev 存在 | ⚠️ 仅限教学 |
 | ⑥ 校验侧加固 | 成功即删除（✅ 已有）+ 错误次数上限 | `verifySmsCode` 已做一次性作废 | 缺错误计数 |
 
 ③④⑤⑥ 属于常规工程规范，**①② 才是本章主题**——因为它们涉及原子性，写错了会在并发下静默失效。
+
+> ①② 已落成三个可直接对比的接口（一个裸接口 + 两个受保护版本），实测数据与调用命令见 **§9.1**。
 
 ---
 
@@ -287,6 +289,9 @@ Long count = redisTemplate.execute(INCR_WITH_EXPIRE_SCRIPT,
 
 如果脚本里第二个 `redis.call` 报错，第一个的效果同样保留。Lua 解决的不是"回滚"，而是"**在同一个原子块里完成判断 + 多次写入**"。
 
+> 脚本的**原子性**（要么全做要么全不做）和**持久性**（做了会不会丢）是两件事：
+> 前者靠单线程执行保证，后者看 `appendfsync` 策略——详见 [03 · 持久化](03·持久化RDB与AOF.md) 第三节「一条命令的完整旅程」。
+
 ### 7.1 实战：秒杀扣库存（"读-判断-写"三件套）
 
 **场景**：库存只剩 1 件，两个人同时下单。如果拆成三次往返 Redis：
@@ -479,6 +484,70 @@ Redis 脚本用到的 Lua 只有一小部分，够用就行：
 **为什么不担心"SETNX 成功、INCR 超限"**：代价只是 60 秒内不能再点，不消耗额度，可接受。
 
 ---
+
+### 9.1 本项目已落地的三个对照接口
+
+上面讲的限制，项目里已经实现成三个端点（`dev` / `dev-docker` 生效），可以直接跑起来对比：
+
+| 端点 | 保护 | 关键参数 | 返回字段 |
+|---|---|---|---|
+| `POST /api/redis-playground/sms/send` | **无**（对照组） | `phone` | `devCode`（仅教学环境返回） |
+| `POST /api/redis-playground/sms/send-guarded` | 窗口限流 | `phone`、`windowSeconds`（默认 60） | `sent` / `remainingSeconds` |
+| `POST /api/redis-playground/sms/send-daily-limited` | 每日上限 | `phone`、`dailyLimit`（默认 5） | `todayCount` / `remainingQuota` / `resetInSeconds` |
+
+**实测对比**（连续调用，同一环境）：
+
+```text
+① /sms/send ×2                → 两次都成功，devCode 分别 361246、913179（完全没限制）
+② /sms/send-guarded ×2        → 第 1 次 sent=true；第 2 次 RATE_LIMITED，remainingSeconds=60
+③ /sms/send-daily-limited?dailyLimit=2 ×3
+     1: todayCount=1, remainingQuota=1  → 成功
+     2: todayCount=2, remainingQuota=0  → 成功
+     3: DAILY_LIMIT_EXCEEDED, resetInSeconds=28792（≈ 到次日 0 点）
+```
+
+Redis 里对应的 key 与 TTL（同一时刻实测）：
+
+| key | TTL | 说明 |
+|---|---|---|
+| `demo:sms:limit:<phone>` | 49s | 60 秒窗口，已走 11 秒 |
+| `demo:sms:daily:<phone>` | 28780s | 到次日 0 点归零 |
+| `demo:captcha:<phone>` | 288s | 5 分钟有效期，被新码覆盖 |
+
+**自己动手验证**：
+
+```bash
+# ① 裸接口：连点两次都成功（这就是"没做限流"的样子）
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send?phone=13900000001"
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send?phone=13900000001"
+
+# ② 窗口限流：第二次直接被拒
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send-guarded?phone=13900000002"
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send-guarded?phone=13900000002"
+
+# ③ 每日上限：把 dailyLimit 设小，快速看到边界
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send-daily-limited?phone=13900000003&dailyLimit=2"
+
+# ④ 想验证 1 秒窗口（不用等 60 秒）：
+curl -X POST "http://localhost:8080/api/redis-playground/sms/send-guarded?phone=13900000004&windowSeconds=1"
+```
+
+**代码对应**（都在 `RedisPlaygroundController`）：
+
+```java
+// ① 窗口限流：SET NX EX 一条命令，原子占用
+Boolean acquired = redisTemplate.opsForValue()
+        .setIfAbsent(limitKey, "1", Duration.ofSeconds(windowSeconds));
+
+// ② 每日上限：INCR 自增，仅首次创建时设"到次日 0 点"的过期
+Long todayCount = redisTemplate.opsForValue().increment(dailyKey);
+if (todayCount == 1L) {
+    LocalDateTime nextMidnight = LocalDate.now().plusDays(1).atStartOfDay();
+    redisTemplate.expire(dailyKey, Duration.between(LocalDateTime.now(), nextMidnight));
+}
+```
+
+> 两个接口都还留着一个**已知缺口**：`INCR` 与 `EXPIRE` 之间仍非原子（§5 形态 1 描述的场景）。要彻底消除，把这两步换成 Lua —— 思路与 §7 的 `lua/deduct_stock.lua` 完全一致，只是业务从"扣库存"换成"发验证码计数"。
 
 ## 10. 常见坑速查
 
