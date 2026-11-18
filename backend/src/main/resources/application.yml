@@ -37,8 +37,13 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+    # ★ 长任务：每条处理成功就提交 offset
+      ack-mode: record
     consumer:
       group-id: research-agent-backend
+      # ★ 一次只拉一条：长任务场景避免一批卡住导致全批重投
+      max-poll-records: 1
       # 新消费者组从【最早】消息开始读（学习环境友好：能看到历史消息——"重放"演示的前提）
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -172,3 +177,5 @@ sp6:
     source: main-yml
     tags:
       - main
+
+
