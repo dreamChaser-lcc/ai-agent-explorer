@@ -40,6 +40,13 @@ if ($lines) {
 # ---------- 2. 组装 profile ----------
 $modes = @($Mode | ForEach-Object { $_ -split ',' }) | Where-Object { $_ }
 
+# ★ docker 模式优先：转发到 start-dev-docker.ps1（compose 中间件栈 + dev-docker profile）
+if ($modes -contains "docker") {
+    Write-Host "[2/3] 模式 = docker -> 转发 start-dev-docker.ps1（compose: nacos/postgres/redis/kafka）" -ForegroundColor Cyan
+    & "$PSScriptRoot\start-dev-docker.ps1"
+    exit $LASTEXITCODE
+}
+
 if ($modes -contains "cluster") {
     $profiles = @()
     Write-Host "[2/3] 模式 = cluster（默认 profile：PG + Redis + Kafka + Nacos）" -ForegroundColor Yellow
