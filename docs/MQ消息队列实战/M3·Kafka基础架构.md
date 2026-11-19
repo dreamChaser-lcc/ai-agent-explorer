@@ -3,6 +3,7 @@
 > **一课目标**：把 Kafka 的骨架拆开——Topic/Partition/Consumer Group/offset/ISR/Rebalance 到底各管什么，
 > 并用本项目真实运行数据验证（2026-11-18 实测，容器 `research-kafka`）。
 > **前置**：M1（概念对照表）｜**后续**：M4 生产级（可靠性三问）
+> **配套**：[附录·Kafka核心概念图文总览](附录·Kafka核心概念图文总览.md)（16 个概念一图 + 详解，随时查）
 
 ---
 
