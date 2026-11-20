@@ -128,6 +128,110 @@ kafkaTemplate.send("research-task-execution", taskId.toString());   // 生产
 4. **监控**：`LAG`（积压）是消费者健康第一指标——生产要做告警；
 5. **回退操作手册**：① 旁路查看（新组 console-consumer——安全）；② 重置重放（`--reset-offsets`——**必须先停应用**）；③ 预防"书签过期变新组"（调大 `offsets.retention.minutes`）。
 
+## 7.5 ★ 补课：消费错误处理与监听容器工厂——A/B 两种模式（2026-11-20 补）
+
+> **背景**：M5 补了 [`KafkaErrorHandlingConfig`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/KafkaErrorHandlingConfig.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/KafkaErrorHandlingConfig.java)）——此前缺失 = 异常无限重投 → 分区卡死。本节讲清它的**自动装配原理**与**工厂的 A/B 两种用法**。
+
+### 7.5.1 CommonErrorHandler：注册即生效的自动装配
+
+[`KafkaErrorHandlingConfig`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/KafkaErrorHandlingConfig.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/KafkaErrorHandlingConfig.java)）只做了一件事——`@Bean` 注册一个 `DefaultErrorHandler`（实现 `CommonErrorHandler` 接口）：
+
+```java
+@Bean
+public DefaultErrorHandler kafkaDefaultErrorHandler(KafkaTemplate<String, String> kafkaTemplate) {
+    DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
+            (record, ex) -> new TopicPartition(record.topic() + DLT_SUFFIX, record.partition()));
+    DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3));
+    handler.addNotRetryableExceptions(IllegalArgumentException.class);   // 不可恢复：不重试直接 DLT
+    return handler;
+}
+```
+
+**Spring Boot 的 Kafka 自动配置**（`KafkaAutoConfiguration`）在创建默认 `kafkaListenerContainerFactory` 时，会扫描容器：
+
+```java
+// Spring Boot 源码级行为（简化）：
+Map<String, CommonErrorHandler> handlers = context.getBeansOfType(CommonErrorHandler.class);
+if (handlers.size() == 1) {
+    factory.setCommonErrorHandler(handlers.values().iterator().next());   // ★ 自动挂上
+}
+```
+
+**触发范围澄清（常见误解）**：
+
+| 事件 | 走这个 handler 吗 |
+|------|:---:|
+| `@KafkaListener` 处理**某条消息**抛异常（业务报错等） | ✅ 正是它：重试 3 次 → 死信 |
+| 应用启动时 Kafka 连不上 | ❌ 启动/重连机制，与它无关 |
+| 消费者分区 Rebalance | ❌ 另有 `ConsumerRebalanceListener` |
+| 生产者发送失败 | ❌ 另有生产者异常处理 |
+
+一句话：**它的职责 = "消费一条消息 → 抛异常 → 这条消息怎么办"**（重试/跳过/进死信 `原topic.DLT`）。
+
+### 7.5.2 `kafkaListenerContainerFactory` 是什么：`@KafkaListener` 背后的生产线
+
+`@KafkaListener` 注解背后需要一个**监听容器工厂**支撑——谁连 broker、谁拉消息、并发几个线程、offset 何时提交、错误怎么办，全由它负责：
+
+```text
+kafkaListenerContainerFactory（工厂 Bean，默认名字）
+   └─ 创建 MessageListenerContainer（常驻容器）
+        ├─ 连接 broker、订阅 topic
+        ├─ 按 concurrency 起 N 个消费线程
+        ├─ poll 消息 → 调用 @KafkaListener 方法
+        └─ 异常 → 转给 CommonErrorHandler
+```
+
+`@KafkaListener` 注解的 `containerFactory` 属性**默认值就是这个名字**——所以不指定也能用。
+
+### 7.5.3 模式 A：不写工厂（本项目现状）
+
+Spring Boot 的自动配置带 **`@ConditionalOnMissingBean(name = "kafkaListenerContainerFactory")`**——容器里**没有**同名 Bean 才创建默认工厂；创建时顺手挂上 yml 的 `spring.kafka.*` 配置和你的 `CommonErrorHandler`。**你 0 行工厂代码，功能齐全。**
+
+### 7.5.4 模式 B：手写工厂（何时需要 + 完整示例）
+
+```java
+@Bean
+public ConcurrentKafkaListenerContainerFactory<String, String> batchFactory(
+        ConsumerFactory<String, String> consumerFactory,
+        DefaultErrorHandler errorHandler) {              // ← 直接注入已有错误处理器
+
+    var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
+    factory.setConsumerFactory(consumerFactory);
+    factory.setConcurrency(3);                           // 3 个消费线程并行
+    factory.setBatchListener(true);                      // 批量模式：一次收 List<消息>
+    factory.getContainerProperties()
+            .setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);   // 手动提交 offset
+    factory.setCommonErrorHandler(errorHandler);         // ★ 手写工厂必须显式 set（自动装配退位）
+    return factory;
+}
+
+// 使用：显式指定工厂，签名也从单条变 List
+@KafkaListener(topics = "xxx-batch", containerFactory = "batchFactory")
+public void onBatch(List<String> messages) { ... }
+```
+
+**何时需要手写**：批量消费（高吞吐）、手动 ack（严格不丢）、不同监听器差异化并发/配置、多套集群。**注意**：一旦手写同名工厂，Boot 的自动装配整个让位（`@ConditionalOnMissingBean`），错误处理器必须手动 `set`——便利全部失效，责任回到手上。
+
+### 7.5.5 企业实践：A 还是 B？
+
+**结论：A 为主、按需 B，两者长期共存**：
+
+| 阶段 | 形态 |
+|------|------|
+| 大多数业务消息（普通消费） | **模式 A**——默认工厂 + yml 配置 + 注解，覆盖 70%+ 需求 |
+| 批量消费 / 手动 ack / 差异化配置 | 按需加 **模式 B**（一个项目常见 1~2 个自定义工厂） |
+| 成熟团队规范 | 常显式定义**一个**统一工厂（并发/错误处理/ack 集中显式配置，便于审计）——所以"大项目里见到手写工厂"很正常，但**每个 listener 都手写**并不常见 |
+| 更大的团队/平台 | 上 Spring Cloud Stream 或 RocketMQ 等抽象层，屏蔽工厂细节（类比：Redisson 之于手写 Redis 锁） |
+
+**判断口诀**：
+
+```text
+"标准消费、一条一条处理"     → 模式 A（默认工厂 + 注解）
+"批量/手动 ack/差异化配置"   → 模式 B（手写工厂，显式 set 错误处理器）
+```
+
+> **详解版**：本节是速览。工厂创建的源码级流程、`spring.kafka.listener.*` 属性与 Java setter 的完整对照表、自定义工厂与 yml 的作用边界、concurrency 与分区数的关系、7 条坑速查——见 [专题 · Kafka 监听工厂与消费错误处理详解](../MQ消息队列实战/Kafka监听工厂与错误处理详解.md)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/docs/MQ消息队列实战/Kafka监听工厂与错误处理详解.md)）。
+
 ## 8. 复盘与关联地图
 
 | 今天的部件 | 哪课学过 |

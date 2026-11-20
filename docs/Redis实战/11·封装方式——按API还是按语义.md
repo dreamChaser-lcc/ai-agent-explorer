@@ -414,7 +414,91 @@ A：putAll 与 expire 是两条命令，中间失败会留下永不过期的 key
    要么用 Pipeline/Lua，要么接受 TTL 由业务自己兜底。
 ```
 
-## 10. 一句话
+## 10. 延伸：配置与装配也有 A/B——「规则定义在哪」（2026-11-20 补）
+
+> Kafka 那边有"监听容器工厂 A/B 模式"（模式 A：规则写在 `application.yml` 由 Boot 代你 set；模式 B：手写工厂自己 set）。**Redis 生态有一套完全平行的结构**——每一层都存在"yml/自动装配（A）"与"手写 Bean（B）"的分叉。
+
+### 10.1 四层装配的 A/B 对照
+
+| 层 | 模式 A：yml / Boot 自动装配 | 模式 B：手写 Bean / 代码 | 本项目 |
+|---|---|---|---|
+| **连接工厂** | `spring.data.redis.*`（host/port）→ Boot 自动配 `LettuceConnectionFactory` | 手写同类型 Bean：自定义连接池、超时、读写分离 | ✅ A |
+| **序列化模板** | Boot 自动提供 `StringRedisTemplate`（字符串序列化） | 手写 `RedisTemplate<String,Object>` + JSON 序列化器（§0 `RedisUtils` 的根源之一） | ✅ A（业务都注入 StringRedisTemplate） |
+| **缓存规则** | `@EnableCaching` + `spring.cache.type=redis`（默认：无 TTL + JDK 序列化） | **手写 `RedisCacheConfiguration` Bean 接管 TTL 与序列化** | ✅ **B**（[`CacheConfiguration`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/config/CacheConfiguration.java)——TTL 30 分钟 + JSON 接管） |
+| **缓存错误降级** | 默认 `SimpleCacheErrorHandler`——**Redis 挂了，异常直接抛到业务** | 实现 `CachingConfigurer` 覆盖 `errorHandler()` → 注册全局 `CacheErrorHandler` | 🔜 可扩展（见 10.3） |
+
+**让位机制与 Kafka 同款**：Boot 的自动配置都带 `@ConditionalOnMissingBean`（按类型或名字判断）——手写 `LettuceConnectionFactory` Bean，默认连接工厂让位；手写 `RedisCacheConfiguration` Bean，默认缓存配置让位。**模式 B 一旦出现，A 的那层便利即失效**，与 Kafka 手写工厂后"错误处理器必须显式 set"是同一个逻辑。
+
+### 10.2 与 Kafka 工厂 A/B 的平行对照
+
+| | Kafka 监听工厂 | Redis 装配 |
+|---|---|---|
+| 模式 A（yml 定义规则） | `spring.kafka.listener.*`（concurrency/type/ack-mode） | `spring.data.redis.*` + `spring.cache.type` |
+| 模式 B（代码定义规则） | 手写 `kafkaListenerContainerFactory`，`setConcurrency/setBatchListener/...` | 手写 `RedisCacheConfiguration` / `RedisConnectionFactory` / `RedisTemplate` Bean |
+| 自动收集挂载 | `CommonErrorHandler` Bean → 自动挂工厂 | ❌ **没有对等物**——`CacheErrorHandler` 需实现 `CachingConfigurer`（见 10.3） |
+| 让位机制 | `@ConditionalOnMissingBean(name="kafkaListenerContainerFactory")` | `@ConditionalOnMissingBean(RedisConnectionFactory.class)` 等同款 |
+| 手写后失效的便利 | 自动挂 handler | 自动 TTL/序列化（默认值回到 JDK 序列化 + 无 TTL） |
+
+### 10.3 模式 B 的杀手级应用：`CacheErrorHandler` 缓存降级
+
+**Kafka 没有的对应物**——Redis 侧有一个价值极高的 B 模式：**让"Redis 挂了"不打断业务**。
+
+默认行为：`@Cacheable` 读写缓存时 Redis 连不上 → `RedisConnectionFailureException` 直接抛到业务 → **接口 500**（缓存本是加速器，却成了单点）。
+
+解法：实现 `CachingConfigurer`，注册全局 `CacheErrorHandler`——**所有缓存异常都降级为"未命中"，业务自动回源数据库**：
+
+```java
+@Configuration
+public class CacheErrorTolerantConfig implements CachingConfigurer {
+
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException ex, Cache cache, Object key) {
+                log.warn("[cache] 读缓存失败，降级回源 key={}", key, ex);   // 不抛 → 业务回源 DB
+            }
+            @Override
+            public void handleCachePutError(RuntimeException ex, Cache cache, Object key, Object value) {
+                log.warn("[cache] 写缓存失败 key={}", ex);
+            }
+            @Override
+            public void handleCacheEvictError(RuntimeException ex, Cache cache, Object key) {
+                log.warn("[cache] 失效失败 key={}", ex);   // 有 TTL 兜底，不致命
+            }
+            @Override
+            public void handleCacheClearError(RuntimeException ex, Cache cache) {
+                log.warn("[cache] 清空失败", ex);
+            }
+        };
+    }
+}
+```
+
+效果：Redis 宕机 → 接口不 500，只是"每次都回源 DB"（性能退化为无缓存状态，**可用性保住**）——这正是"缓存是加速器不是依赖"的架构原则的落地。与场景⑨⑩「锁禁止降级」（[`LockHelper`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/lock/DistributedTaskLock.java) 故意不吞异常）形成对照：**缓存降级、锁抛错——按语义分流失败**（呼应本篇 §4）。
+
+### 10.4 本项目的 A/B 分布图
+
+```text
+模式 A（yml / Boot 自动装配）：
+  spring.data.redis.*（连接）→ LettuceConnectionFactory
+  StringRedisTemplate（字符串模板，业务直接注入）
+  @EnableCaching + spring.cache.type=redis（缓存开关）
+
+模式 B（手写 Bean，项目已用）：
+  CacheConfiguration → RedisCacheConfiguration（TTL 30 分钟 + JSON 序列化接管）★ 已有
+  可选：CachingConfigurer.errorHandler() → 缓存降级            ★ 推荐补
+  可选：手写 RedisTemplate<String,Object>（若确需存对象）      ← 11 文档 §0 的 RedisUtils 即此路（注意坑）
+
+混合铁律：模式 B 出现即让位模式 A 的对应层——TTL/序列化被接管后，
+yml 里 spring.cache.redis.* 的同类配置不再生效（项目 yml 注释里"由 CacheConfiguration 自定义接管"就是这个意思）。
+```
+
+**一句话**：
+
+> **Kafka 的"工厂 A/B"和 Redis 的"装配 A/B"是同一套哲学**：规则可以写在 yml 让 Boot 代劳（A），也可以写成 Bean 自己掌控（B）；B 出现即让位 A，且便利随之失效。Redis 侧最值得做的 B，是注册 `CacheErrorHandler`——让缓存挂掉时业务只是"变慢"，而不是"变挂"。
+
+## 11. 一句话
 
 > **`RedisUtils` 解决的是「统一」，`CacheHelper` / `LockHelper` 解决的是「语义清晰 + 失败可控」。**
 > 前者让所有人写法一致，后者让每个人知道失败意味着什么——生产系统里，后者更重要。
