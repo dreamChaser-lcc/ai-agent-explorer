@@ -2,7 +2,8 @@ package com.aiexplorer.researchagent.infrastructure.llm;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -34,17 +35,33 @@ public class LlmCallGuard {
     private final int maxRetries;
 
     /** 专用线程池：LLM 调用是 IO 密集型，不能占用业务线程/ForkJoinPool。 */
+    /** 并发上限天花板：LLM 调用并发受消费入口控制（量级几十），64 = 留足余量的硬顶；超出的走 AbortPolicy 快速失败，被外层重试/降级接住。 */
+    private static final int MAX_CONCURRENT_CALLS = 64;
+
+    /**
+     * 专用线程池：LLM 调用是 IO 密集型，不能占用业务线程/ForkJoinPool。
+     *
+     * <p>显式 ThreadPoolExecutor（不使用 Executors 快捷工厂——《阿里巴巴 Java 开发手册》强制要求，
+     * 详见 J13·有界线程池与背压）：core=0（无常驻线程，按需创建）、max=64（给线程数画天花板）、
+     * SynchronousQueue（不排队——排队会让 future.get(timeout) 的超时语义失真）、
+     * 60s 空闲回收、AbortPolicy（超 64 并发快速失败）。原 newCachedThreadPool 即
+     * core=0/max=∞ 的隐藏版——线程无界，洪峰时线程爆炸（J13 坑 2）。</p>
+     */
     private final ExecutorService callExecutor;
 
     public LlmCallGuard(LlmClient llmClient, int timeoutSeconds, int maxRetries) {
         this.llmClient = llmClient;
         this.timeoutSeconds = Math.max(1, timeoutSeconds);
         this.maxRetries = Math.max(0, maxRetries);
-        this.callExecutor = Executors.newCachedThreadPool(runnable -> {
-            Thread workerThread = new Thread(runnable, "llm-call-worker");
-            workerThread.setDaemon(true);
-            return workerThread;
-        });
+        this.callExecutor = new ThreadPoolExecutor(
+                0, MAX_CONCURRENT_CALLS, 60L, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                runnable -> {
+                    Thread workerThread = new Thread(runnable, "llm-call-worker");
+                    workerThread.setDaemon(true);
+                    return workerThread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     /**

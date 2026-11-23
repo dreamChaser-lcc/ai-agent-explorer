@@ -760,7 +760,48 @@ try {
 - 任务执行互斥（场景⑨）：`lock:task:exec:<taskId>`；
 - 定时清理互斥（场景⑩）：`lock:cleanup`——多实例部署时保证定时任务**全集群只跑一份**（[`RetentionCleanupJob`](../../backend/src/main/java/com/aiexplorer/researchagent/infrastructure/cleanup/RetentionCleanupJob.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/infrastructure/cleanup/RetentionCleanupJob.java)））。
 
-### 5.5 概念展开
+### 5.5 ★ 锁的精确语义：锁的是"执行权"，粒度由 key 决定（2026-11-20 补）
+
+**核心理解**：分布式锁锁的不是"任务本身"，而是**"这个任务当前的执行权"**——**key 的粒度 = 互斥的范围**：
+
+```text
+实例A 执行任务 111 → 持有 lock:task:exec:111
+实例B 执行任务 222 → 持有 lock:task:exec:222     ← 不同 key = 不同锁 = 互不影响，正常并行 ✅
+实例B 想执行任务 111 → 抢 lock:task:exec:111 → 抢不到（A 持有）→ 跳过 ✅
+```
+
+**设计含义**：给每个异步任务定义唯一的 key，"谁抢到这个 key 谁执行"；key 按什么粒度设计（按任务/按用户/全局一把），就决定了互斥的范围——全局一把锁会让所有任务串行，按任务分锁才能"该并行的并行、该互斥的互斥"。
+
+### 5.5.1 双实例抢同一任务的完整时序
+
+```text
+Kafka 把任务 111 的消息投给实例A（也可能投给 B——消费组不保证给谁）
+实例A：SET lock:task:exec:111 token-A NX EX 300  → 成功（key 不存在）★ 互斥 ✓
+        → 状态守卫 CAS（QUEUED→RUNNING）★ 防重复 ✓
+        → 执行业务
+实例B 同时触发任务 111（重投/重复消费）
+        → SET NX 失败（key 已存在）→ 跳过
+实例A 执行完 → Lua 校验 token-A → DEL → 释放
+极端情况：实例A 执行中崩溃 → 没有 DEL → TTL 5 分钟后锁自动过期 → 其他实例可重试
+                ★ 防崩溃死锁 ✓
+```
+
+**三重防线各司其职**：
+
+| 防线 | 防什么 | 机制 |
+|------|--------|------|
+| `SET NX EX` | **防同时执行** | 原子抢占，只有一个成功 |
+| 状态守卫（DB CAS） | **防重复执行**（锁释放后再次触发） | `UPDATE ... WHERE status='QUEUED'`——已 RUNNING/COMPLETED 的任务不会被重新标记 |
+| TTL | **防崩溃死锁**（执行者挂了锁不放） | 到期自动过期 |
+
+### 5.5.2 两个注意点
+
+1. **TTL 与业务时长的矛盾**：锁过期 ≠ 业务完成——手写版靠调大 TTL（不优雅），生产用 Redisson 看门狗（T7，自动续期）；
+2. **锁只防"同时执行"，不防"先后重复执行"**：A 释放锁后，B 再抢到锁还会把任务再执行一遍 → **锁必须配合幂等**（状态守卫：已 COMPLETED 的任务不会被重新标记 RUNNING）——这就是"锁是防线之一，不是全部"（防线家族见[分布式并发全景](../服务架构/分布式并发全景——有序性·原子性·互斥（Redis·数据库·ZooKeeper）.md)）。
+
+**一句话**：**Redis 通过 `SET NX EX` + 唯一 key，让"同一个异步任务在多实例集群里只有一个实例执行，其他实例自动跳过，崩溃后锁自动释放"——配合状态守卫做幂等，才是完整的方案。**
+
+### 5.6 概念展开
 
 锁的进化四步（SETNX → SET NX EX → token+Lua → Redlock）、看门狗续期、三大进阶问题 → 见 [05·分布式锁深入](05·分布式锁深入.md)。
 
