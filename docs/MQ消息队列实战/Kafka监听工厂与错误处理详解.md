@@ -170,6 +170,74 @@ topic 只有 2 个分区，concurrency=3：
 
 **规则**：`并行度上限 = 分区数`；**最佳实践 = concurrency ≤ 分区数**（常见做法：concurrency = 分区数，一一对应）。想提高并行度，先**加分区**，再提并发。
 
+### 5.1 进阶①：autoStartup——运行时启停消费（不重启应用）
+
+**默认行为**：应用启动 → 容器立刻开始消费。`auto-startup` 控制"启动时是否自动开闸"：
+
+```yaml
+spring:
+  kafka:
+    listener:
+      auto-startup: false    # 应用启动，但容器暂停（消息照常积压在 Kafka，不丢）
+```
+
+**运行时手动启停**（配合运维 API / 自定义 Controller）：
+
+```java
+@Autowired
+private KafkaListenerEndpointRegistry registry;   // Spring Kafka 的容器注册表
+
+// 按 groupId / 容器 id 启停（@KafkaListener 的 id 属性 = 容器 id）
+registry.getListenerContainer("research-agent-container").stop();   // 暂停消费
+registry.getListenerContainer("research-agent-container").start();  // 恢复消费
+```
+
+**三个典型场景**：
+
+| 场景 | 做法 | 为什么不用重启 |
+|------|------|----------------|
+| **发布/数据迁移窗口** | 暂停消费 → 迁移完成 → start | 消息积压在 Kafka 不丢，恢复后按 offset 续读 |
+| **下游过载保护** | LLM 服务过载 → stop 消费 → 恢复后 start | 比"调大 max.poll.interval.ms 硬扛"更主动（场景⑥ 的对照） |
+| **灰度发布** | 新版本实例先 auto-startup=false → 验证无误再 start | 流量切换可控 |
+
+**注意事项**：暂停期间 **LAG 持续增长**（监控必须覆盖）；恢复后消费组按 offset 续读（不丢不重——重不重的防线还是幂等）。
+
+### 5.2 进阶②：多集群连接（第二套 bootstrap-servers 怎么配）
+
+**Boot 只自动装配"主集群"**（application.yml 默认那套，模式 A）——**第二集群必须手写 ConsumerFactory + 工厂**（模式 B）：
+
+```java
+@Configuration
+public class SecondClusterConfig {
+
+    @Bean
+    public ConsumerFactory<String, String> secondConsumerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka-b:9092");  // ★ 第二集群地址
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "research-agent-second");
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> secondClusterFactory(
+            ConsumerFactory<String, String> secondConsumerFactory) {
+        var f = new ConcurrentKafkaListenerContainerFactory<String, String>();
+        f.setConsumerFactory(secondConsumerFactory);
+        return f;
+        // ★ 同款坑：自定义工厂不吃主集群的 yml listener.* 配置、
+        //   错误处理器要手动 setCommonErrorHandler(...)
+    }
+}
+
+// 使用：显式指定工厂
+@KafkaListener(topics = "legacy-sync", containerFactory = "secondClusterFactory")
+public void onLegacyMessage(String msg) { ... }
+```
+
+**什么时候需要多集群**：多机房/新老系统并存（迁移期双集群）、数据管道与应用集群分离、跨环境消费。**使用频率不高但要知道姿势**——遇到时按"模式 B + 每集群一套 ConsumerFactory/工厂"展开即可。
+
+> **A/B 哲学的第三次出现**：主集群 = 模式 A（yml 定义规则），第二集群 = 模式 B（代码定义规则）——和 Redis 的 LettuceConnectionFactory（A）vs 手写 CacheConfiguration（B）完全同构。
+
 ---
 
 ## 6. 错误处理器的触发范围
