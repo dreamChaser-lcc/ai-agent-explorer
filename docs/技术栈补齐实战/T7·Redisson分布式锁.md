@@ -49,6 +49,9 @@ lock.tryLock(0, -1, TimeUnit.SECONDS)   ← leaseTime=-1 = 启用看门狗
 流程：
 ① 加锁成功：key TTL = 30s（默认 lockWatchdogTimeout）
 ② 后台定时任务（每 TTL/3 = 10s）检查：这把锁还是我持有的？
+   ★ 检查依据：Redisson 的锁是 Hash 结构（↓ §四），field = "客户端ID(UUID):threadId"——
+     续期脚本用 HEXISTS(key, 我的field) 验证：field 还在 = 锁还是我的 → 续；
+     不在（锁过期被别人抢走）= 不续（不会误续别人的锁）
    是 → PEXPIRE 续回 30s（任务跑多久锁都不过期）
    否（进程崩溃，续期线程死了）→ 无人续期 → 30s 后锁自动过期 ✓ 兜底仍在
 ③ unlock() → 取消看门狗 + 删除 key
@@ -68,8 +71,56 @@ Redisson：HSET lock:task:exec:123 <线程标识:UUID> 1   （Hash！）
   unlock → 计数 -1 → 1（锁还在！）
   再 unlock → 计数 0 → DEL（真正释放）
 
+★ 凭证（field）的生成位置（源码级）：
+  UUID 部分 → Redisson 客户端创建时生成一次（Redisson.id = UUID.randomUUID()）
+              ——进程级：应用不重启就不变（区分"哪台实例"）
+  threadId → 每次加锁调用时取当前线程（Thread.currentThread().getId()）
+              ——线程级：线程活着就不变（区分"哪条线程"）
+  拼接 → RedissonLock.getLockName(threadId) = id + ":" + threadId → 成为 HSET 的 field
+  → 推论：可重入是【线程级】的——同线程重入计数 +1（field 相同），
+    不同线程/不同实例 = 不同 field = 真正的竞争
+
 使用场景：方法 A 持锁后调用方法 B，B 也需要同一把锁
   （递归/公共方法被持锁路径调用）——手写版会死锁自己
+```
+
+### 亲手验证：一个端点看穿可重入与看门狗（2026-11-23 补）
+
+> demo 端点：[`ReentrantLockDemoController`](../../backend/src/main/java/com/aiexplorer/researchagent/api/controller/redisDemo/ReentrantLockDemoController.java)（[网页版](https://github.com/dreamChaser-lcc/ai-agent-explorer/blob/main/backend/src/main/java/com/aiexplorer/researchagent/api/controller/redisDemo/ReentrantLockDemoController.java)，dev/dev-docker profile）。
+> ★ 可重入的前提是"同一个线程"——所以演示放在**一个请求内串完整生命周期**（HTTP 每请求一个新线程，拆端点就演示不了重入）。
+
+**端点 1：`GET /api/redis-demo/reentrant-lifecycle`** —— 同线程 5 步，每步返回 Redis 实时快照（type / hash 凭证与计数 / ttlMs）：
+
+| 步 | 返回里看什么 | 印证 |
+|---|---|---|
+| ① 第一次 tryLock | type=HASH、hash={uuid:threadId: 1}、ttlMs≈30000 | 锁=Hash，凭证=field |
+| ② 同线程再 tryLock | 计数 **1→2**（field 不变） | 可重入 ✓ |
+| ③ 睡 8 秒后 ttlMs | **仍 ≈30000**（而不是衰减到 22000） | ★ 看门狗在续期 |
+| ④ unlock ×1 | 计数 2→1 | 配对释放（锁还在） |
+| ④ unlock ×2 | 计数 1→0 → **key 被删除** | 真正释放 |
+
+**端点 2：`GET /api/redis-demo/reentrant-parallel`** —— 两个线程抢同一把锁：
+
+```text
+线程A tryLock 成功（持有 2.5s）
+  → 线程B（主线程）A 持有期间 tryLock(0) = false   ← 不同 threadId = 不同 field = 真正的竞争
+  → A 释放后 B 再 tryLock = true                    ← 竞争结束，正常获取
+```
+
+**redis-cli 旁路验证**（调端点①② 之间另开终端执行）：
+
+```bash
+TYPE  lock:demo:reentrant:1       # hash                      ← 不是 string！
+HGETALL lock:demo:reentrant:1     # "b7e6...:42" → "2"       ← field=凭证，value=重入计数
+TTL   lock:demo:reentrant:1       # ≈28（不断被看门狗重置回 30 附近）
+```
+
+**对照手写版的结构限制**（String 天生不可重入）：
+
+```bash
+SET lock:demo:string "t1" NX EX 30     # OK
+SET lock:demo:string "t1" NX EX 30     # (nil)——String+NX 连同值重设都失败（没有计数概念）
+TYPE lock:demo:string                  # string
 ```
 
 ## 五、对照实现要点（RedissonTaskLock.java）
