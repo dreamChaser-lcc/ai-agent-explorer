@@ -60,6 +60,20 @@ spring:
       config:
         server-addr: localhost:8848
 
+# 分布式任务调度（T9）：XXL-Job 执行器——调试环境开启（★ 必须放顶层，与 spring: 平级）
+# ★ 实跑步骤（T9 文档 §3.5）：先起调度中心容器 + 初始化 MySQL xxl_job 库 → 再把下面 enabled 改 true
+#   未起调度中心时保持 false：true 会导致启动后持续刷"执行器注册失败"警告（不阻塞启动，但吵）
+xxl:
+  job:
+    enabled: true
+    admin-addresses: http://localhost:8082/xxl-job-admin   # compose 暴露的 8082 → admin 容器 8080
+    access-token: default_token
+    executor:
+      appname: research-agent-executor
+      port: 9999
+      logpath: ./logs/xxl-job
+      logretentiondays: 7
+
 # 持久化实现：mybatis（覆盖主配置默认的 jpa）
 #   —— dev-docker 模式下用 MyBatis 手写 SQL 调试（mapper 见 resources/mapper/）
 #   切换回 jpa 只需改这一行或设 APP_PERSISTENCE_MODE=jpa

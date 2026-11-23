@@ -171,6 +171,56 @@ services:
       postgres:
         condition: service_healthy
 
+  # ------------------------------------------------------------
+  # MySQL —— XXL-Job 调度中心的专属存储（T9）
+  #  XXL-Job admin 官方只支持 MySQL（tables_xxl_job.sql），与业务 PG 分开：
+  #  调度平台元数据不混入业务库；端口 3307:3306 避开宿主机可能存在的本地 MySQL
+  #  首次启动自动执行挂载的初始化脚本（/docker-entrypoint-initdb.d/ 惯例）——
+  #  建库 xxl_job + 8 张表 + 默认数据（登录 admin / 密码 123456，生产务必改密）
+  # ------------------------------------------------------------
+  mysql-xxl:
+    image: docker.m.daocloud.io/library/mysql:8.0
+    container_name: research-mysql-xxl
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-xxl-data:/var/lib/mysql
+      - ./xxl-job/tables_xxl_job.sql:/docker-entrypoint-initdb.d/01-tables_xxl_job.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  # ------------------------------------------------------------
+  # XXL-Job 调度中心（T9）—— 控制台 http://localhost:8082/xxl-job-admin（admin/123456）
+  #  镜像走 DaoCloud 加速（xuxueli/xxl-job-admin 直拉易被墙）
+  #  PARAMS 用 --spring.datasource.* 指向 compose 网络内的 mysql-xxl（服务名寻址）
+  #  compose 内的 backend（application-docker.yml）用 http://xxl-job-admin:8080/xxl-job-admin 派单
+  #  本地 mvn（dev-docker profile）用 http://localhost:8082/xxl-job-admin
+  #  ★ 注意 8081 已被上方 Adminer（tools profile）声明——XXL-Job 必须避开
+  # ------------------------------------------------------------
+  xxl-job-admin:
+    image: docker.m.daocloud.io/xuxueli/xxl-job-admin:2.4.1
+    container_name: research-xxl-job-admin
+    ports:
+      - "8082:8080"
+    environment:
+      TZ: Asia/Shanghai
+      PARAMS: >-
+        --spring.datasource.url=jdbc:mysql://mysql-xxl:3306/xxl_job?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=root
+        --spring.datasource.password=root
+        --xxl.job.accessToken=default_token
+    depends_on:
+      mysql-xxl:
+        condition: service_healthy
+
 volumes:
   pg-data:
   kafka-data:
+  mysql-xxl-data:

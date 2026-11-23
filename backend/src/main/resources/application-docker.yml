@@ -39,3 +39,16 @@ spring:
         server-addr: nacos:8848
       config:
         server-addr: nacos:8848
+
+# 分布式任务调度（T9）：XXL-Job 执行器——compose 内开箱即用（★ 顶层配置，与 spring: 平级）
+#（调度中心容器 xxl-job-admin 与本服务同网络；主配置默认 enabled=false，此处覆盖为 true）
+xxl:
+  job:
+    enabled: true
+    admin-addresses: http://xxl-job-admin:8080/xxl-job-admin
+    access-token: default_token
+    executor:
+      appname: research-agent-executor
+      port: 9999
+      logpath: /app/logs/xxl-job
+      logretentiondays: 7

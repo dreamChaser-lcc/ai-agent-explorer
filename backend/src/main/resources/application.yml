@@ -69,6 +69,23 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+# ===== T9 分布式任务调度（XXL-Job 执行器）=====
+# ★ 配置必须在顶层（xxl: 与 spring: 平级）——XXL-Job 不是 Spring Boot 官方 starter，
+#   没有 spring.* 前缀；放进 spring: 段会变成 spring.xxl.job.enabled，
+#   @ConditionalOnProperty(name = "xxl.job.enabled") 读不到 → 执行器永远不创建（J13/T9 联合坑）
+# 默认关闭；dev-docker 调试环境在 application-dev-docker.yml 覆盖 enabled=true
+# 实跑步骤见 T9 文档 §3.5（docker 起调度中心 → enabled: true → 控制台建任务）
+xxl:
+  job:
+    enabled: false
+    admin-addresses: http://localhost:8082/xxl-job-admin
+    access-token: default_token
+    executor:
+      appname: research-agent-executor
+      port: 9999
+      logpath: ./logs/xxl-job
+      logretentiondays: 7
+
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
