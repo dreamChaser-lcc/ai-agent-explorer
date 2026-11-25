@@ -7,6 +7,25 @@
 
 ---
 
+## 目录
+
+- [一、装配链：一个注解背后的四步](#sb1-1)
+- [二、@Conditional 家族（决定"装不装"的六把尺子）](#sb1-2)
+- [三、怎么"读"自动配置（三种方法，按场景）](#sb1-3)
+- [三点五、怎么知道 Boot 有没有给我默认实现（4 种查法，2026-11-23 学员问）](#sb1-4)
+- [四、项目实战：三个"自动配置/条件装配"的真实案例](#sb1-5)
+- [四点半、实测：lite + --debug 的真实 report（2026-11-23）](#sb1-6)
+- [四点半·补充：一次真实的 --debug 输出怎么读（2026-11-24 学员运行 dev-docker）](#sb1-13)
+- [五、自动配置的执行顺序（为什么不用你管）](#sb1-7)
+- [六、自定义自动配置的最小骨架（SB2 预告）](#sb1-8)
+- [七、五个常见坑](#sb1-9)
+- [八、自测题（答案）](#sb1-10)
+- [八点五、实验验证：@ConditionalOnMissingBean 的顺序与陷阱（2026-11-23 实测）](#sb1-11)
+- [九、一句话](#sb1-12)
+
+---
+
+<a id="sb1-1"></a>
 ## 一、装配链：一个注解背后的四步
 
 ```text
@@ -42,6 +61,7 @@ spring-kafka                   → KafkaAutoConfiguration
 spring-boot-starter-actuator   → 各 EndpointAutoConfiguration
 ```
 
+<a id="sb1-2"></a>
 ## 二、@Conditional 家族（决定"装不装"的六把尺子）
 
 | 注解 | 判断条件 | 项目实例 |
@@ -62,6 +82,7 @@ spring-boot-starter-actuator   → 各 EndpointAutoConfiguration
    public class MyAutoConfiguration { @Bean @ConditionalOnMissingBean ... }
 ```
 
+<a id="sb1-3"></a>
 ## 三、怎么"读"自动配置（三种方法，按场景）
 
 ### 方法 1：启动加 `--debug`（离线看，最全）
@@ -128,6 +149,7 @@ curl http://localhost:8080/actuator/conditions
 项目里也可以在 target/dependency 或 ~/.m2 里找到这个 jar
 ```
 
+<a id="sb1-4"></a>
 ## 三点五、怎么知道 Boot 有没有给我默认实现（4 种查法，2026-11-23 学员问）
 
 > "默认给你一个能用的"——怎么知道它给了？答案是现场查，不是背。
@@ -199,6 +221,7 @@ https://docs.spring.io/spring-boot/reference/using/auto-configuration.html
 ② "怎么知道" = 现场查：--debug（配置类命中）→ /actuator/beans（真实 Bean）
 ③ "不确定就反证"：自定义一个同类型 Bean → 看 report 变化
 ```
+<a id="sb1-5"></a>
 ## 四、项目实战：三个"自动配置/条件装配"的真实案例
 
 ### 案例 1：`app.cache.enabled` 控制缓存配置（@ConditionalOnProperty）
@@ -251,6 +274,7 @@ Spring Boot 的 CacheAutoConfiguration 里：
 → 这是 Boot 的核心扩展哲学：【默认给一个，用户覆盖就退让】
 ```
 
+<a id="sb1-6"></a>
 ## 四点半、实测：lite + --debug 的真实 report（2026-11-23）
 
 命令：
@@ -309,6 +333,336 @@ org.redisson.spring.starter.RedissonAutoConfigurationV2    ★ lite yml 的 excl
    它们只负责创建 Bean（KafkaTemplate/RedisTemplate）——连接是懒的
    → 所以 lite 下也能启动（配合 spring.kafka.listener.auto-startup=false 等配置）
 ```
+<a id="sb1-7"></a>
+<a id="sb1-13"></a>
+## 四点半·补充：一次真实的 --debug 输出怎么读（2026-11-24 学员运行 dev-docker）
+
+> 学员用 `mvn spring-boot:run "-Dspring-boot.run.profiles=dev-docker" "-Dspring-boot.run.arguments=--debug"` 跑出的四段，
+> 正好覆盖了 report 的四种典型信息。逐条读：
+
+### 输出长什么样（四段结构）
+
+```text
+============================
+CONDITIONS EVALUATION REPORT
+============================
+
+Positive matches:              ← 装了（每条下面列"哪些条件满足"）
+-----------------
+   XxxAutoConfiguration matched:
+      - @ConditionalOnClass found required class '...'
+
+Negative matches:              ← 没装（★ 排障重点：下面列"哪个条件不满足"）
+-----------------
+   YyyAutoConfiguration:
+      Did not match:
+         - @ConditionalOnProperty (xxx.enabled) did not find property 'xxx.enabled'
+
+Exclusions:                    ← 被 spring.autoconfigure.exclude 排除
+-----------
+   org.xxx.SomeAutoConfiguration
+
+Unconditional classes:         ← 没有任何条件的配置类（少见）
+----------------------
+   （略）
+```
+
+### "装了"到底指什么？（类级 vs 方法级，2026-11-24 学员问）
+
+```text
+report 里的 "matched" 有三层含义，别混：
+
+① 类级：XxxAutoConfiguration matched:
+   = 这个自动配置类通过了全部条件 → 被 Boot 纳入配置类解析
+   → 它的 @Bean 方法会被逐个处理（但每条 @Bean 还有自己的条件！）
+
+② 方法级：XxxAutoConfiguration#beanName matched:
+   = 这个具体的 @Bean 方法也满足条件 → BeanDefinition 注册 → 最终实例化
+
+③ "配置"不是被装的对象：
+   配置（yml/property/环境变量）是条件判断的【输入】——
+   @ConditionalOnProperty 读它，决定"装不装"。
+   → 准确说法：配置【让】某些东西装上，不是"装配置"。
+```
+
+**用本项目 report 对照（类装 ≠ Bean 全装）**：
+
+```text
+CacheAutoConfiguration matched:                 ← ① 类级：缓存自动配置"装了"
+   ├── SimpleCacheConfiguration matched            ← 但其实现是单选（spring.cache.type=simple）
+   └── CaffeineCacheConfiguration:
+          Did not match: unknown cache type        ← 类在但没被选中
+
+DemoGreetingAutoConfiguration matched:          ← ① 类级
+DemoGreetingAutoConfiguration#demoGreetingService matched:   ← ② 方法级（Bean 也装了）
+
+KafkaAutoConfiguration matched:                 ← ① 类级
+   KafkaAutoConfiguration#kafkaTemplate matched    ← ② 方法级
+```
+
+**一句话记法**：
+
+```text
+XxxAutoConfiguration matched      → 类"上车"了
+XxxAutoConfiguration#bean matched → 这个 Bean"上车"了
+"装配置"不成立——配置是条件判断的依据，不是被装配的对象。
+```
+### 每行格式的精确语义（照着表读就不会懵）
+
+| 输出片段 | 含义 |
+|---|---|
+| `Xxx matched:` | 该配置类/方法装配 |
+| `Did not match:` | 未装配（下面逐条列原因） |
+| `@ConditionalOnClass found required class 'X'` | 类在 → 满足 |
+| `@ConditionalOnProperty (x=y) did not find property 'x'` | 配置项没配 → **不满足** |
+| `@ConditionalOnProperty (x=y) matched` | 配置匹配 → 满足 |
+| `@ConditionalOnMissingBean ... found beans of type 'X' xxx` | 已有 Bean → **不满足**（默认让位） |
+| `@ConditionalOnMissingBean ... did not find any beans` | 没有 Bean → 满足 |
+| `@ConditionalOnBean (types: X) found bean 'y'` | 有 Bean → 满足 |
+| `@ConditionalOnBean ... did not find any beans` | 没 Bean → **不满足** |
+| `AnyNestedCondition 0 matched 2 did not` | "任一满足"型条件，0 个满足 → 不装（下面会列出每个子条件） |
+| `Ancestor org.xxx.YyyAutoConfiguration did not match` | 父配置未匹配 → 连带跳过 |
+| `@ConditionalOnThreading did not find VIRTUAL` | 虚拟线程未开（spring.threads.virtual.enabled 不是 true） |
+| `@ConditionalOnWebApplication found 'session' scope` | Web 环境 → 满足 |
+| `Cache ... SIMPLE cache type (CacheCondition)` | 缓存类型选择命中（spring.cache.type=simple） |
+
+### 条件实现类对照（输出里的括号后缀）
+
+| 后缀 | 来自注解 |
+|---|---|
+| `(OnClassCondition)` | `@ConditionalOnClass` |
+| `(OnBeanCondition)` | `@ConditionalOnBean` / `@ConditionalOnMissingBean` |
+| `(OnPropertyCondition)` | `@ConditionalOnProperty` |
+| `(OnWebApplicationCondition)` | `@ConditionalOnWebApplication` |
+| `(OnThreadingCondition)` | `@ConditionalOnThreading`（Boot 3.2+） |
+| `(CacheCondition)` | 缓存类型分支（CacheAutoConfiguration 内部） |
+| `(OnResourceCondition)` | `@ConditionalOnResource` |
+
+### ★ Did not match 的四种类型（决定"要不要管"）
+
+| 类型 | 特征行 | 本项目例子 | 要不要管 |
+|---|---|---|---|
+| **A. 依赖没引** | `@ConditionalOnClass did not find required class 'X'` | HATEOAS（缺 Link）/ WebFlux（缺 WebClient） | ❌ 不用（能力不需要） |
+| **B. 能力被别的选项占了** | `CacheCondition unknown cache type`（类在但未选中） | CaffeineCacheConfiguration（spring.cache.type=simple） | 按需改配置 |
+| **C. 用户已提供（覆盖）** | `@ConditionalOnMissingBean ... found beans of type 'X'` | TaskExecutorConfiguration（researchTaskExecutor） | ✅ 正常（让位是设计） |
+| **D. 开关没开** | `@ConditionalOnProperty ... did not find property` | Redisson / Swagger actuator | 按需开配置 |
+
+**读法口诀**：
+
+```text
+看到 Did not match，先归类（A/B/C/D），再决定管不管：
+  A 类（缺依赖）  → 90% 不用管（用的不是这套）
+  B 类（选项没选）→ 想用就改 spring.xxx.type / mode
+  C 类（你已提供）→ 正常，不用管
+  D 类（开关没开）→ 想开就配 property
+```
+
+### ★ 重要细节：Matched 与 Did not match 可以同时出现（AND 语义）
+
+```text
+CaffeineCacheConfiguration:
+   Did not match:
+      - Cache org.springframework.boot.autoconfigure.cache.CaffeineCacheConfiguration
+        unknown cache type (CacheCondition)                        ← 选择层不满足
+   Matched:
+      - @ConditionalOnClass found required classes 'Caffeine', 'CaffeineCacheManager'
+                                                                   ← 依赖层满足
+
+语义：条件之间是【AND】——只要一条 Did not match，整个类就不装；
+     Matched 只是"这一条过了"，不代表整体命中。
+     （例外：AnyNestedCondition 是 OR——"任一满足"即通过）
+→ 所以读法：先看 Did not match 有几条、分别是什么，不要被 Matched 迷惑。
+→ 本例结论：Caffeine 依赖在、但 spring.cache.type=simple（不是 caffeine）→ 没被选中（改 type 即变 Positive）
+```
+
+### 三段典型"不装"的解读（2026-11-24 学员贴）
+
+```text
+① CaffeineCacheConfiguration：类在（有 caffeine 依赖）但未被选中（type=simple）
+   → 改 spring.cache.type=caffeine → 变 Positive（SimpleCacheConfiguration 同时变 Negative）
+② CloudHypermediaAutoConfiguration：@ConditionalOnClass did not find 'org.springframework.hateoas.Link'
+   → 没引 spring-boot-starter-hateoas → 正常（REST 超媒体用不到）
+③ CodecsAutoConfiguration：@ConditionalOnClass did not find 'WebClient'
+   → 没引 spring-boot-starter-webflux → 正常（项目是 MVC，不是响应式栈）
+```
+### 互斥分支：一个 Positive 必有一个 Negative（2026-11-25 学员贴）
+
+**AOP 代理的两个分支（AopAutoConfiguration 内部）**：
+
+```text
+CglibAutoProxyConfiguration:
+   @ConditionalOnProperty(spring.aop.proxy-target-class=true, matchIfMissing=true)  → 默认装
+JdkDynamicAutoProxyConfiguration:
+   @ConditionalOnBooleanProperty(spring.aop.proxy-target-class=false)               → 没配 → 不装
+
+真实输出（本项目）：
+JdkDynamicAutoProxyConfiguration:
+    Did not match:
+       - @ConditionalOnBooleanProperty (spring.aop.proxy-target-class=false)
+         did not find property 'spring.aop.proxy-target-class'
+
+结论：项目默认用【CGLIB 动态代理】（Spring Boot 2.x 起默认 proxyTargetClass=true）；
+     JdkDynamic 分支"不装"是设计，不是故障。
+验证：yml 设 spring.aop.proxy-target-class=false → 重启 → 两分支反转。
+```
+
+**同类互斥清单（看到 Negative 先找"兄弟"）**：
+
+```text
+缓存实现：Simple ✅ / Caffeine ❌ / Redis ❌（spring.cache.type 单选）
+AOP 代理：Cglib ✅ / JdkDynamic ❌（proxy-target-class 单选）
+Web 栈：MVC（web）✅ / WebFlux ❌（依赖二选一）
+DataSource：Hikari ✅ / Tomcat ❌ / DBCP2 ❌（spring.datasource.type 单选）
+
+★ 互斥分支的 report 表现：一个 Positive 必有一个 Negative（成对出现）
+  → 这类 Negative 不是"故障"，是"没被选中的那个选项"
+```
+
+**新注解说明（Boot 3.4+）**：
+
+```text
+@ConditionalOnBooleanProperty(spring.aop.proxy-target-class=false)
+  = @ConditionalOnProperty(name="spring.aop.proxy-target-class", havingValue="false") 的简写
+```
+
+**另一个 A 类例子（依赖没引）**：
+
+```text
+ActiveMQAutoConfiguration:
+    Did not match: @ConditionalOnClass did not find required class 'jakarta.jms.ConnectionFactory'
+→ JMS/ActiveMQ 依赖没引（A 类）→ 不用管（项目用 Kafka）
+```
+### ★ 读条件结果要结合注解语义（MissingBean 的反直觉，2026-11-25 学员问）
+
+```text
+学员贴的这段（SB2 的 demo-greeting starter）：
+
+DemoGreetingAutoConfiguration#demoGreetingService matched:
+   - @ConditionalOnMissingBean (types: ...DemoGreetingService; SearchStrategy: all)
+     did not find any beans (OnBeanCondition)
+
+逐字读：
+  DemoGreetingAutoConfiguration#demoGreetingService  ← 方法级条目（类名#@Bean方法名）
+  matched:                                           ← 这个方法装配
+  @ConditionalOnMissingBean(...) did not find any beans  ← 条件：容器里没有该类型 Bean（确实没有）
+  → 条件成立 → 装默认实现（starter 生效）
+```
+
+**反直觉对照表（同一输出在不同注解下结论相反）**：
+
+| 注解 | 输出 | 条件结果 | 装配 |
+|---|---|---|---|
+| `@ConditionalOnMissingBean` | `did not find any beans` | ✅ 满足 | **装**（默认实现） |
+| `@ConditionalOnMissingBean` | `found beans of type 'X'` | ❌ 不满足 | 不装（让位） |
+| `@ConditionalOnBean` | `found bean 'x'` | ✅ 满足 | 装 |
+| `@ConditionalOnBean` | `did not find any beans` | ❌ 不满足 | 不装（缺依赖） |
+
+```text
+★ 读法口诀：
+   "did not find any beans" 本身没有好坏——要看它属于哪个注解：
+   MissingBean 下是好事（装默认）；OnBean 下是坏事（缺依赖不装）。
+```
+
+**本项目两个真实对照**：
+
+```text
+① did not find any beans（MissingBean）→ 装默认
+   DemoGreetingAutoConfiguration#demoGreetingService matched（SB2 starter 生效）
+② found beans of type 'Executor' researchTaskExecutor（MissingBean 不满足）→ 默认让位
+   TaskExecutorConfigurations.TaskExecutorConfiguration: Did not match
+```
+### 五步读法（照着做）
+
+```text
+① 先看 Exclusions（被排除的——最可能是你手动加的 spring.autoconfigure.exclude）
+② grep 目标配置类名（如 "KafkaAutoConfiguration"）
+③ 看它的 Did not match 列表——第一个不满足的条件就是"为什么没装"
+④ 看 Matched 列表——确认"它有资格装，只是被某个条件拦住"（对比才能定位）
+⑤ 动手改：配开关 / 引依赖 / 去掉 exclude → 再 --debug，看它变 Positive
+```
+
+### 两种启用方式
+
+```powershell
+# 方式 1：启动参数（临时排查）
+mvn spring-boot:run "-Dspring-boot.run.arguments=--debug"
+
+# 方式 2：配置（长期开启/特定环境）
+#   application.yml:
+#     debug: true
+#   或更细粒度：
+#     logging.level.org.springframework.boot.autoconfigure: DEBUG
+```
+### ① springdoc 的 actuator 集成未启用（配置开关类）
+
+```text
+SwaggerConfig.SwaggerActuatorWelcomeConfiguration:
+    Did not match:
+       - @ConditionalOnProperty (springdoc.use-management-port) did not find property 'springdoc.use-management-port'
+    Matched:
+       - @ConditionalOnClass found required class 'org.springframework.boot.actuate.endpoint.web.servlet.WebMvcEndpointHandlerMapping'
+
+读法：类在（actuator 有）→ 但配置没开（springdoc.use-management-port 未配）→ 不装
+结论：正常。Swagger 走默认路径 /swagger-ui，没挂到 /actuator 下。
+```
+
+### ② 虚拟线程变体让位给默认 builder（@ConditionalOnMissingBean 一进一出）
+
+```text
+TaskExecutorConfigurations.SimpleAsyncTaskExecutorBuilderConfiguration#simpleAsyncTaskExecutorBuilderVirtualThreads:
+    Did not match:
+       - @ConditionalOnMissingBean (types: SimpleAsyncTaskExecutorBuilder) found beans ... 'simpleAsyncTaskExecutorBuilder'
+
+读法：Boot 已经建了默认 builder → "虚拟线程版 builder"不装（有默认就不装变体）
+```
+
+### ③ ★ 项目自定义线程池 → Boot 默认 TaskExecutor 让位（最有价值的一段）
+
+```text
+TaskExecutorConfigurations.TaskExecutorConfiguration:
+    Did not match:
+       - AnyNestedCondition 0 matched 2 did not;
+         条件 1：@ConditionalOnProperty (spring.task.execution.mode=force) did not find property
+         条件 2：@ConditionalOnMissingBean (types: Executor) found beans of type 'Executor' researchTaskExecutor
+
+读法：AnyNestedCondition = "两个条件满足一个即可"，结果 0/2 → 不装
+  条件 2 的 "found researchTaskExecutor" 就是项目自己的线程池 Bean
+结论：Boot 不创建默认 TaskExecutor（用户覆盖 → 默认让位，与 SB1 实验 1 同源）
+```
+
+### ④ ★ 虚拟线程未开启（@ConditionalOnThreading）
+
+```text
+TaskSchedulingConfigurations.SimpleAsyncTaskSchedulerBuilderConfiguration#...VirtualThreads:
+    Did not match: @ConditionalOnMissingBean ... found 'simpleAsyncTaskSchedulerBuilder'
+
+TaskSchedulingConfigurations.TaskSchedulerConfiguration#taskSchedulerVirtualThreads:
+    Did not match: @ConditionalOnThreading did not find VIRTUAL
+
+读法：@ConditionalOnThreading 要求 spring.threads.virtual.enabled=true 才判定 VIRTUAL
+结论：项目跑在平台线程；要开虚拟线程：yml 加 spring.threads.virtual.enabled=true（SB7 专门讲）
+```
+
+### 四段串起来的结论
+
+```text
+① springdoc 的 actuator 集成没开（正常，走默认路径）
+② 线程池/调度器都是项目自定义的（Boot 默认让位——@ConditionalOnMissingBean 生效）
+③ ★ 虚拟线程没开（Boot 3.2+ 的 spring.threads.virtual.enabled=true 才开）→ SB7 的引子
+```
+
+### 读 --debug 的三个技巧（几百行不迷路）
+
+```powershell
+# ① 定位某个自动配置
+Get-Content app.log | Select-String "KafkaAutoConfiguration" -Context 0,3
+# ② 只看"为什么没生效"（Negative 段）
+Get-Content app.log | Select-String "Did not match" -Context 0,2
+# ③ 看被排除的
+Get-Content app.log | Select-String "Exclusions:" -Context 0,5
+# ④ 程序化看：/actuator/conditions（JSON，需暴露端点）
+#    management.endpoints.web.exposure.include: health,info,conditions
+```
 ## 五、自动配置的执行顺序（为什么不用你管）
 
 ```text
@@ -329,6 +683,7 @@ org.redisson.spring.starter.RedissonAutoConfigurationV2    ★ lite yml 的 excl
    你自定义自动配置时如果需要"先有某个 Bean"，用 @AutoConfigureAfter + @ConditionalOnBean 组合
 ```
 
+<a id="sb1-8"></a>
 ## 六、自定义自动配置的最小骨架（SB2 预告）
 
 ```java
@@ -359,6 +714,7 @@ public class MyFeatureAutoConfiguration {
 SB2 会走完整流程：建一个 research-agent-starter 模块（autoconfigure + starter 两层）+ 测试。
 ```
 
+<a id="sb1-9"></a>
 ## 七、五个常见坑
 
 ```text
@@ -370,6 +726,7 @@ SB2 会走完整流程：建一个 research-agent-starter 模块（autoconfigure
 ⑤ --debug 的 report 很长（~150 个配置类）→ 用 grep 定位（如 Select-String "RedisAutoConfiguration"）
 ```
 
+<a id="sb1-10"></a>
 ## 八、自测题（答案）
 
 ```text
@@ -635,6 +992,7 @@ KafkaAutoConfiguration：
 ③ @ConditionalOnSecurity / @ConditionalOnWebApplication 等是更专门的变体（本质同族）
 ```
 
+<a id="sb1-11"></a>
 ## 八点五、实验验证：@ConditionalOnMissingBean 的顺序与陷阱（2026-11-23 实测）
 
 ### 实验代码（@Profile 隔离，正常启动不生效）
@@ -715,6 +1073,7 @@ WARN ConfigServletWebServerApplicationContext : Exception encountered during con
   → 自动配置先装默认 → 你再注册同类型 → 两个并存 → 同实验 2 的症状（启动失败/注入歧义）
 → 结论：不要依赖"后置注册"去覆盖自动配置；正常 @Configuration + @Bean 就是"先手"。
 ```
+<a id="sb1-12"></a>
 ## 九、一句话
 
 ```text
@@ -722,3 +1081,5 @@ WARN ConfigServletWebServerApplicationContext : Exception encountered during con
 读它的三把钥匙：--debug 的 report / /actuator/conditions / 直接看 AutoConfiguration 源码。
 记住：Boot 不是"什么都给你配好"，而是"条件满足才配，你覆盖它就退让"。
 ```
+
+
