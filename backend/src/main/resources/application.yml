@@ -108,7 +108,7 @@ management:
       exposure:
         # 第 5 课（2026-10-01）：暴露 env 端点，用于观察配置"来源与取值"（热更新实验观测窗）
         # ★ 生产环境不建议暴露 env（可能泄漏配置明细）——学习环境临时开放
-        include: health,info,env
+        include: health,info,env,metrics     # SB5：加 metrics（观察 JVM/HTTP/自定义指标）
 
 mybatis:
   # 递归匹配子目录（练习 XML 在 mapper/requestPipline/ 下；只写 mapper/*.xml 会扫不到子目录）
