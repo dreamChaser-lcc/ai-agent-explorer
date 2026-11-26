@@ -177,3 +177,18 @@ CREATE TABLE IF NOT EXISTS request_pipline (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_request_pipline_request_id ON request_pipline (request_id);
+
+-- ============================================================
+-- L1 标签域最小CRUD
+-- ============================================================
+CREATE TABLE IF NOT EXISTS l1_tag (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    status VARCHAR(32) NOT NULL,
+    create_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    update_time TIMESTAMP WITH TIME ZONE NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_l1_tag_name ON l1_tag (name);
+CREATE INDEX IF NOT EXISTS uk_l1_tag_name ON l1_tag (status);

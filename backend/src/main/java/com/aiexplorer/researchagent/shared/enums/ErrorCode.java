@@ -66,6 +66,12 @@ public enum ErrorCode {
     /** 数据访问失败（@Repository 翻译后的 Spring DAO 异常，见 J4 课）。 */
     DATA_ACCESS_ERROR("DATA_ACCESS_ERROR", "数据访问失败", HttpStatus.BAD_REQUEST),
 
+    /** 标签不存在（L1 标签域）。 */
+    TAG_NOT_FOUND("TAG_NOT_FOUND", "标签不存在", HttpStatus.NOT_FOUND),
+
+    /** 标签名重复（L1 标签域）。 */
+    TAG_NAME_DUPLICATE("TAG_NAME_DUPLICATE", "标签名已存在", HttpStatus.CONFLICT),
+
     /** 未预期异常（兜底 500）。 */
     INTERNAL_ERROR("INTERNAL_ERROR", "服务器内部错误", HttpStatus.INTERNAL_SERVER_ERROR);
 
@@ -105,3 +111,4 @@ public enum ErrorCode {
         throw new IllegalArgumentException("未知错误码: " + code);
     }
 }
+

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  标签表（l1_tag）的 SQL 映射。
+
+  ★ 关键约定：
+    1. namespace 必须与 TagMapper 接口全限定名一字不差
+       （多一个子包/少一个子包都会报 Invalid bound statement (not found)）
+    2. 参数名与接口 @Param 一致（po / id / name）
+    3. 时间字段 create_time / update_time 由 Service 传入（Java 侧生成），SQL 不写 NOW()
+-->
+<mapper namespace="com.aiexplorer.researchagent.infrastructure.persistence.store.mybatis.l1Tag.TagMapper">
+
+    <!-- 公共列清单：避免每个 select 重复写 6 个字段 -->
+    <sql id="Base_Column_List">
+        id, name, description, status, create_time, update_time
+    </sql>
+
+    <!-- ==================== 新增 ==================== -->
+    <insert id="insert">
+        INSERT INTO l1_tag (
+            id, name, description, status, create_time, update_time
+        ) VALUES (
+            #{po.id}, #{po.name}, #{po.description}, #{po.status}, #{po.createTime}, #{po.updateTime}
+        )
+    </insert>
+
+    <!-- ==================== 查询（单个） ==================== -->
+    <select id="selectById" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.l1Tag.TagEntity">
+        SELECT
+            <include refid="Base_Column_List"/>
+        FROM l1_tag
+        WHERE id = #{id}
+    </select>
+
+    <!-- 按名称精确匹配（★ 不能写 Like：重名校验会被"前缀相同"误判） -->
+    <select id="selectByName" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.l1Tag.TagEntity">
+        SELECT
+            <include refid="Base_Column_List"/>
+        FROM l1_tag
+        WHERE name = #{name}
+    </select>
+
+    <!-- ==================== 查询（列表） ==================== -->
+    <!-- 列表固定按创建时间倒序（L3 会在此基础上加分页） -->
+    <select id="selectAll" resultType="com.aiexplorer.researchagent.infrastructure.persistence.entity.l1Tag.TagEntity">
+        SELECT
+            <include refid="Base_Column_List"/>
+        FROM l1_tag
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- ==================== 更新 ==================== -->
+    <update id="update">
+        UPDATE l1_tag
+        SET
+            name        = #{po.name},
+            description = #{po.description},
+            status      = #{po.status},
+            update_time = #{po.updateTime}
+        WHERE id = #{po.id}
+    </update>
+
+    <!-- ==================== 删除 ==================== -->
+    <delete id="deleteById">
+        DELETE FROM l1_tag
+        WHERE id = #{id}
+    </delete>
+
+</mapper>
